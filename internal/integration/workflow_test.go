@@ -26,13 +26,21 @@ func TestSourceCheckWorkflowOnlyChecksMainChanges(t *testing.T) {
 
 	assertReadOnlyPermissions(t, workflow)
 	jobs := mappingValue(t, workflow, "jobs")
-	if len(jobs.Content) != 2 || mappingValue(t, jobs, "check") == nil {
-		t.Fatal("source workflow must contain only the check job")
+	arch := mappingValue(t, jobs, "arch")
+	if len(jobs.Content) != 4 || arch == nil || mappingValue(t, jobs, "check") == nil {
+		t.Fatal("source workflow must contain Arch and cross-platform check jobs only")
+	}
+	if got := scalar(t, mappingValue(t, arch, "uses")); got != "./.github/workflows/arch.yml" {
+		t.Fatalf("source Arch workflow = %q", got)
+	}
+	if mappingValue(t, arch, "with") != nil {
+		t.Fatal("source checks must use the reusable Arch workflow's empty version default")
 	}
 	check := mappingValue(t, jobs, "check")
 	assertCheckMatrix(t, check)
 	assertCheckSteps(t, check)
 	assertPinnedActionsAndNoBypass(t, workflow)
+	assertNoSecretReferences(t, workflow)
 	assertNoPackageOrUpload(t, check)
 }
 
@@ -54,9 +62,10 @@ func TestTagBuildWorkflowValidatesExactVersionAndPublishesOnlyArchives(t *testin
 	jobs := mappingValue(t, workflow, "jobs")
 	validate := mappingValue(t, jobs, "validate")
 	check := mappingValue(t, jobs, "check")
+	arch := mappingValue(t, jobs, "arch")
 	packageJob := mappingValue(t, jobs, "package")
-	if validate == nil || check == nil || packageJob == nil || len(jobs.Content) != 6 {
-		t.Fatal("tag build must contain validate, check, and package jobs only")
+	if validate == nil || check == nil || arch == nil || packageJob == nil || len(jobs.Content) != 8 {
+		t.Fatal("tag build must contain validate, check, Arch, and package jobs only")
 	}
 	if !equalStrings(nodeStrings(t, mappingValue(t, check, "needs")), []string{"validate"}) {
 		t.Fatalf("tag check dependencies = %v, want validate", nodeStrings(t, mappingValue(t, check, "needs")))
@@ -81,15 +90,60 @@ func TestTagBuildWorkflowValidatesExactVersionAndPublishesOnlyArchives(t *testin
 
 	assertCheckMatrix(t, check)
 	assertCheckSteps(t, check)
-	if !sameStrings(nodeStrings(t, mappingValue(t, packageJob, "needs")), []string{"validate", "check"}) {
-		t.Fatalf("package dependencies = %v, want validate and check", nodeStrings(t, mappingValue(t, packageJob, "needs")))
+	if !sameStrings(nodeStrings(t, mappingValue(t, arch, "needs")), []string{"validate", "check"}) {
+		t.Fatalf("Arch dependencies = %v, want validate and check", nodeStrings(t, mappingValue(t, arch, "needs")))
+	}
+	if got := scalar(t, mappingValue(t, arch, "uses")); got != "./.github/workflows/arch.yml" {
+		t.Fatalf("tag Arch workflow = %q", got)
+	}
+	if got := scalar(t, mappingValue(t, mappingValue(t, arch, "with"), "version")); got != "${{ needs.validate.outputs.version }}" {
+		t.Fatalf("tag Arch version = %q", got)
+	}
+	if !sameStrings(nodeStrings(t, mappingValue(t, packageJob, "needs")), []string{"validate", "check", "arch"}) {
+		t.Fatalf("package dependencies = %v, want validate, check, and Arch", nodeStrings(t, mappingValue(t, packageJob, "needs")))
 	}
 	if mappingValue(t, packageJob, "if") != nil {
 		t.Fatal("package job must use GitHub's default successful-needs condition")
 	}
 	assertPinnedActionsAndNoBypass(t, workflow)
+	assertNoSecretReferences(t, workflow)
 	assertNoReleasePublication(t, workflow)
 	assertPackageUpload(t, packageJob)
+}
+
+func TestArchReusableWorkflowIsolatedAndPackagesOnlyVersionedTags(t *testing.T) {
+	workflow := readWorkflow(t, "arch.yml")
+	trigger := mappingValue(t, workflow, "on")
+	if len(trigger.Content) != 2 || mappingValue(t, trigger, "workflow_call") == nil {
+		t.Fatal("Arch workflow must be reusable only, with no automatic event trigger")
+	}
+	inputs := mappingValue(t, mappingValue(t, trigger, "workflow_call"), "inputs")
+	version := mappingValue(t, inputs, "version")
+	if got := scalar(t, mappingValue(t, version, "default")); got != "" {
+		t.Fatalf("Arch version default = %q, want empty", got)
+	}
+	if got := scalar(t, mappingValue(t, version, "required")); got != "false" {
+		t.Fatalf("Arch version required = %q, want false", got)
+	}
+	if got := scalar(t, mappingValue(t, version, "type")); got != "string" {
+		t.Fatalf("Arch version type = %q, want string", got)
+	}
+
+	assertReadOnlyPermissions(t, workflow)
+	jobs := mappingValue(t, workflow, "jobs")
+	if len(jobs.Content) != 2 {
+		t.Fatal("Arch reusable workflow must contain only its isolated check job")
+	}
+	arch := mappingValue(t, jobs, "arch")
+	if arch == nil || scalar(t, mappingValue(t, arch, "runs-on")) != "ubuntu-24.04" {
+		t.Fatal("Arch job must run on Ubuntu 24.04")
+	}
+	assertArchContainer(t, mappingValue(t, arch, "container"))
+	assertArchSteps(t, arch)
+	assertPinnedActionsAndNoBypass(t, workflow)
+	assertNoSecretReferences(t, workflow)
+	assertArchSetupScript(t)
+	assertArchPackageScript(t)
 }
 
 func readWorkflow(t *testing.T, name string) *yaml.Node {
@@ -212,6 +266,170 @@ func assertCheckSteps(t *testing.T, job *yaml.Node) {
 	}
 }
 
+func assertArchContainer(t *testing.T, container *yaml.Node) {
+	t.Helper()
+	if container == nil || container.Kind != yaml.MappingNode {
+		t.Fatal("Arch job must use a pinned container")
+	}
+	image := scalar(t, mappingValue(t, container, "image"))
+	if !regexp.MustCompile(`^quay\.io/archlinux/archlinux@sha256:[0-9a-f]{64}$`).MatchString(image) {
+		t.Fatalf("Arch container image is not an official digest pin: %q", image)
+	}
+	options := scalar(t, mappingValue(t, container, "options"))
+	if strings.Contains(options, "--privileged") || !sameStrings(strings.Fields(options), []string{"--cpus", "2", "--memory", "6g", "--pids-limit", "1024"}) {
+		t.Fatalf("Arch container options = %q, want unprivileged 2 CPU, 6 GiB, 1024 PID bounds", options)
+	}
+}
+
+func assertArchSteps(t *testing.T, job *yaml.Node) {
+	t.Helper()
+	steps := mappingValue(t, job, "steps")
+	if steps == nil || steps.Kind != yaml.SequenceNode {
+		t.Fatal("Arch job lacks steps")
+	}
+	checkout, setup, sourceChecks, packageStep := false, false, false, false
+	uploads := 0
+	for _, step := range steps.Content {
+		if uses := mappingValue(t, step, "uses"); uses != nil {
+			switch {
+			case strings.HasPrefix(scalar(t, uses), "actions/checkout@"):
+				checkout = true
+				if got := scalar(t, mappingValue(t, mappingValue(t, step, "with"), "persist-credentials")); got != "false" {
+					t.Fatalf("Arch checkout persist-credentials = %q, want false", got)
+				}
+			case strings.HasPrefix(scalar(t, uses), "actions/setup-go@"):
+				setup = true
+				if got := scalar(t, mappingValue(t, mappingValue(t, step, "with"), "cache")); got != "false" {
+					t.Fatalf("Arch setup-go cache = %q, want false", got)
+				}
+			case strings.HasPrefix(scalar(t, uses), "actions/upload-artifact@"):
+				uploads++
+				if got := scalar(t, mappingValue(t, step, "if")); got != "${{ inputs.version != '' }}" {
+					t.Fatalf("Arch upload condition = %q", got)
+				}
+				assertArchPackageUpload(t, mappingValue(t, step, "with"))
+			}
+		}
+		if run := mappingValue(t, step, "run"); run != nil {
+			script := scalar(t, run)
+			if strings.Contains(script, "runuser -u bridge-ci -- env PATH=\"$PATH\" make toolchain fmt vet test race generated openapi manifests security") {
+				sourceChecks = true
+			}
+			if strings.Contains(script, "bash scripts/ci-arch-package.sh") {
+				packageStep = true
+				if got := scalar(t, mappingValue(t, step, "if")); got != "${{ inputs.version != '' }}" {
+					t.Fatalf("Arch package condition = %q", got)
+				}
+			}
+		}
+	}
+	if !checkout || !setup || !sourceChecks || !packageStep || uploads != 1 {
+		t.Fatalf("Arch steps incomplete: checkout=%t setup=%t checks=%t package=%t uploads=%d", checkout, setup, sourceChecks, packageStep, uploads)
+	}
+}
+
+func assertArchPackageUpload(t *testing.T, with *yaml.Node) {
+	t.Helper()
+	const expected = "dist/arch/PKGBUILD\ndist/arch/spry-bridge-*-src.tar.gz\ndist/arch/spry-ai-workstation-bridge-*.pkg.tar.zst\ndist/arch/SHA256SUMS"
+	if got := strings.TrimSpace(scalar(t, mappingValue(t, with, "path"))); got != expected {
+		t.Fatalf("Arch artifact paths = %q", got)
+	}
+	if got := scalar(t, mappingValue(t, with, "if-no-files-found")); got != "error" {
+		t.Fatalf("Arch artifact missing-file policy = %q, want error", got)
+	}
+	if got := scalar(t, mappingValue(t, with, "retention-days")); got != "7" {
+		t.Fatalf("Arch artifact retention = %q, want 7 days", got)
+	}
+}
+
+func assertArchSetupScript(t *testing.T) {
+	t.Helper()
+	script := readScript(t, "ci-arch-setup.sh")
+	assertShellSyntax(t, script)
+	for _, required := range []string{
+		"archive.archlinux.org/repos/2026/09/07/\\$repo/os/\\$arch",
+		"pacman-key --init",
+		"pacman-key --populate archlinux",
+		"pacman -Syyu --noconfirm --needed",
+		"useradd --create-home --shell /usr/bin/bash bridge-ci",
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("Arch setup script missing %q", required)
+		}
+	}
+	if strings.Contains(script, "SigLevel = Never") || strings.Contains(script, "--noconfirm --needed --nodeps") {
+		t.Fatal("Arch setup must retain signature verification and dependency checks")
+	}
+}
+
+func assertArchPackageScript(t *testing.T) {
+	t.Helper()
+	script := readScript(t, "ci-arch-package.sh")
+	assertShellSyntax(t, script)
+	for _, required := range []string{
+		"id -u) == 0",
+		"BRIDGE_VERSION:-} =~ ^v(0|[1-9][0-9]*)",
+		"make arch-source VERSION=\"$BRIDGE_VERSION\"",
+		"sha256sum --check SHA256SUMS",
+		"makepkg --verifysource",
+		"makepkg --cleanbuild --noconfirm",
+		"pacman -Qlp \"$bridge_pkg\"",
+		"bsdtar -tf \"$bridge_pkg\"",
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("Arch package script missing %q", required)
+		}
+	}
+	if strings.Contains(script, "--syncdeps") || strings.Contains(script, "--install") || strings.Contains(script, "makepkg -i") {
+		t.Fatal("Arch CI package build must not install or synchronise package dependencies")
+	}
+	firstChecksum := strings.Index(script, "sha256sum --check SHA256SUMS")
+	verifySource := strings.Index(script, "makepkg --verifysource")
+	if firstChecksum < 0 || firstChecksum > verifySource {
+		t.Fatal("Arch package script must verify source checksums before makepkg")
+	}
+	if strings.LastIndex(script, "sha256sum --check SHA256SUMS") < strings.Index(script, "test -f \"$bridge_pkg\"") {
+		t.Fatal("Arch package script must verify final package checksums before upload")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "/bin/bash", scriptPath(t, "ci-arch-package.sh"))
+	cmd.Dir = t.TempDir()
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "BRIDGE_VERSION=v01.2.3"}
+	if output, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("Arch package script accepted an invalid version: %s", output)
+	}
+}
+
+func readScript(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(scriptPath(t, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func scriptPath(t *testing.T, name string) string {
+	t.Helper()
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(root, "scripts", name)
+}
+
+func assertShellSyntax(t *testing.T, script string) {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "script.sh")
+	if err := os.WriteFile(file, []byte(script), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("/bin/bash", "-n", file).CombinedOutput(); err != nil {
+		t.Fatalf("shell syntax: %v: %s", err, output)
+	}
+}
+
 func assertPinnedActionsAndNoBypass(t *testing.T, root *yaml.Node) {
 	t.Helper()
 	pinned := regexp.MustCompile(`^[^@\s]+@[0-9a-f]{40}$`)
@@ -221,8 +439,11 @@ func assertPinnedActionsAndNoBypass(t *testing.T, root *yaml.Node) {
 			return
 		}
 		if node.Kind == yaml.MappingNode {
-			if uses := mappingValue(t, node, "uses"); uses != nil && !pinned.MatchString(scalar(t, uses)) {
-				t.Fatalf("action must be pinned to a full commit SHA: %q", scalar(t, uses))
+			if uses := mappingValue(t, node, "uses"); uses != nil {
+				value := scalar(t, uses)
+				if value != "./.github/workflows/arch.yml" && !pinned.MatchString(value) {
+					t.Fatalf("external action must be pinned to a full commit SHA: %q", value)
+				}
 			}
 			if mappingValue(t, node, "continue-on-error") != nil {
 				t.Fatal("workflow must not use continue-on-error")
@@ -236,6 +457,15 @@ func assertPinnedActionsAndNoBypass(t *testing.T, root *yaml.Node) {
 		}
 	}
 	walk(root)
+}
+
+func assertNoSecretReferences(t *testing.T, root *yaml.Node) {
+	t.Helper()
+	for _, value := range allScalarValues(root) {
+		if strings.Contains(strings.ToLower(value), "secrets.") {
+			t.Fatalf("CI must not consume repository secrets: %q", value)
+		}
+	}
 }
 
 func assertNoReleasePublication(t *testing.T, root *yaml.Node) {

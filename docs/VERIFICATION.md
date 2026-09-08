@@ -12,8 +12,8 @@ user prompt and existing guardrail file remain in the initial checkout.
 
 Post-move verification from the attached checkout passed `make check`,
 `make browser`, `make package`, archive checksum verification, documentation
-audits and `git diff --check`. The Linux/systemd and target-hardware exclusions
-below remain unchanged. Installer checks were not repeated because relocation
+audits and `git diff --check`. At that point, the Linux/systemd and target-hardware
+exclusions below were unchanged. Installer checks were not repeated because relocation
 did not change the installer. No Git staging, commit or push was performed.
 
 These results establish an integrated fixture application and checked source
@@ -23,7 +23,57 @@ change, large model download, workstation build recipe, reboot, publication or
 Git staging/commit/push was performed. Tests used isolated temporary state,
 generated credentials and ephemeral loopback listeners, not user credentials.
 
-## Final Bridge commands
+## Arch CI and package follow-up
+
+Verified 2026-09-08 in the attached GoLand checkout. This follow-up began from
+the owner's clean `624d3d9` commit. It changes CI, source packaging, focused tests
+and documentation only. The API contract, application runtime, installer and
+existing deployment units were not changed. No Git staging, commit, tag, push,
+remote workflow dispatch or package/service installation was performed.
+
+Main pushes and PRs now include a reusable Arch userspace check. Stable-tag
+artifacts require Ubuntu, macOS and Arch success. The tag-only Arch step builds
+a source-based pacman package and uploads its source, concrete PKGBUILD and
+checksums with seven-day retention. See [ARCH-PACKAGING.md](ARCH-PACKAGING.md).
+
+| Command/check | Observed result |
+|---|---|
+| `make check` on macOS arm64 | PASS after generator/workflow changes: formatting, vet, unit/integration, race, generation, OpenAPI, manifests, four builds and vulnerabilities; systemd remains excluded |
+| `make package` and `shasum -a 256 -c SHA256SUMS` from `dist` | PASS; all three cross-platform archives |
+| `make arch-source VERSION=v1.0.0`, `bash -n dist/arch/PKGBUILD`, checksum verification from `dist/arch` | PASS; deterministic source and concrete recipe with real source hash |
+| `go test ./cmd/bridge-arch-package` | PASS; source inventory, modes, checksum/determinism, symlink refusal, invalid versions and malformed templates |
+| Workflow integration tests, including race on macOS | PASS; exact tag gating, all check dependencies, read-only permissions, pinned actions/image, unprivileged Arch execution, no main artifacts or service installation |
+| `actionlint .github/workflows/check.yml .github/workflows/build.yml .github/workflows/arch.yml` | PASS with actionlint 1.7.12 |
+| `shellcheck scripts/ci-arch-setup.sh scripts/ci-arch-package.sh` and `bash -n` | PASS |
+| `go test -v ./...` as an unprivileged user inside the pinned Arch amd64 image | PASS under Docker Desktop amd64 emulation; Linux Unix-peer and worker restart fixtures ran; bubblewrap containment skipped because its package was unavailable |
+| `go vet ./...` inside the same Arch container | PASS |
+| `makepkg --verifysource` inside Arch | PASS; generated archive accepted by makepkg's SHA-256 verification |
+| Final `cmd/bridge-arch-package` test executable cross-built on macOS and run inside Arch | PASS, including actual `package()` execution with tiny fixture binaries in temporary directories; exact payload, permissions and CLI symlink checked. This is not a complete makepkg build |
+| `bash scripts/ci-arch-setup.sh` inside the disposable Arch container | BLOCKED: pacman failed with `error restricting syscalls via seccomp: 22` under local amd64 emulation; sandbox/signature controls were not disabled |
+| `makepkg --cleanbuild --noconfirm` inside Arch | BLOCKED, exit 8: missing `jq`; dependency preparation above failed. No `--nodeps`, `--syncdeps` or install bypass was used |
+| `CGO_ENABLED=1 go test -race ./...` inside Arch | FAILED: local Docker filesystem ran out of space during compilation/tests; not a race-test pass. No unrelated Docker data was pruned |
+| `git diff --check` and technical-writing audits | PASS; new untracked source files also inspected directly |
+
+The container had no host source/home/device/socket mounts, published ports or
+privileged mode. Only allowlisted source files and a Bridge test executable were
+copied into it. Go 1.27.1
+was downloaded from the official HTTPS distribution and checked against its
+published SHA-256 before execution. An initial request without redirect following
+returned a redirect page and failed the checksum check; the corrected HTTPS-only
+redirect request passed. A checksum command initially used the repository root
+instead of `dist/arch`; it reported a missing checksum file and passed from the
+documented directory.
+The disposable container and its scratch state were removed after verification;
+the downloaded image cache and unrelated Docker data were left untouched.
+
+The complete Arch CI job, native amd64 `makepkg` build, actual pacman install/
+upgrade/remove behavior and GitHub artifact upload are **NOT RUN**. The workflow
+uses native amd64 on GitHub, but that is configured behavior, not an observed
+remote result. The local checks above do not remove those qualification gaps.
+Browser tests were not repeated because this follow-up changes no UI/runtime
+code. The initial browser evidence and physical target exclusions remain below.
+
+## Initial application verification commands
 
 | Command | Observed result |
 |---|---|

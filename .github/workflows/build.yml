@@ -49,8 +49,14 @@ jobs:
       - run: make toolchain fmt vet test race generated openapi manifests security
       - run: echo 'NOT RUN — installed service/target hardware qualification'
 
-  package:
+  arch:
     needs: [validate, check]
+    uses: ./.github/workflows/arch.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+
+  package:
+    needs: [validate, check, arch]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:

@@ -85,9 +85,16 @@ in `go.mod`/`go.sum`; the four runtime entry points use the Go standard library.
 
 | Event | Checks | Packaged artifact |
 |---|---|---|
-| Push to `main` | Unit/integration tests, race, formatting, vet, contract/manifests and vulnerability checks on Linux and macOS | None |
+| Push to `main` | Unit/integration tests, race, formatting, vet, contract/manifests and vulnerability checks on Ubuntu, macOS and Arch userspace | None |
 | Pull request targeting `main` | Same checks | None |
-| Push a new stable version tag, such as `v1.0.0` | Validate the tag, then run the same checks | Build and upload only after both check jobs pass |
+| Push a new stable version tag, such as `v1.0.0` | Validate the tag, then run the same checks | Build and upload only after Ubuntu, macOS and Arch checks pass |
+
+The reusable Arch job runs an official digest-pinned `base-devel` container on
+an Ubuntu amd64 runner. Arch packages come from the dated 2026-09-07 archive;
+Go comes from the exact `.go-version` through the pinned setup action. Tests and
+package builds run as an unprivileged container user. This checks Arch userspace,
+not the Arch kernel, installed systemd services, K3s or workstation hardware.
+Update the image and archive snapshot together through a reviewed change.
 
 The accepted tag format is `vMAJOR.MINOR.PATCH`, using non-negative integers
 without leading zeroes. Examples: `v0.1.0`, `v1.0.0`, `v12.3.4`. Tags such as
@@ -114,6 +121,13 @@ Actions storage allowance. Download a needed build before it expires; this is
 not permanent GitHub Releases storage. The workflow does not create releases,
 publish packages, deploy services or request repository secrets.
 
+The same tagged run also produces `spry-bridge-arch-v1.0.0`: a pacman package,
+the generated `PKGBUILD`, its versioned source archive and `SHA256SUMS`. The
+canonical recipe is [packaging/arch/PKGBUILD.in](packaging/arch/PKGBUILD.in).
+It uses the generated archive's real checksum, with no skipped integrity check.
+See [Arch packaging](docs/ARCH-PACKAGING.md) for local builds and installation
+boundaries. The licence decision remains pending; this is not an AUR submission.
+
 The upload uses the SHA-pinned official
 [actions/upload-artifact v7.0.1](https://github.com/actions/upload-artifact/tree/043fb46d1a93c77aae656e7c1c64a875d1fc6a0a)
 action, verified on 2026-09-08. It runs only in CI and adds no application runtime
@@ -122,7 +136,7 @@ and executes the actual tag-validation script with accepted and rejected inputs.
 Full workflow syntax validation was also run with `actionlint` **1.7.12**:
 
 ```sh
-actionlint .github/workflows/check.yml .github/workflows/build.yml
+actionlint .github/workflows/check.yml .github/workflows/build.yml .github/workflows/arch.yml
 ```
 
 Release tags identify application builds. They do not automatically change the

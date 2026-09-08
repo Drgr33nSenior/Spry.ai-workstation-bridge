@@ -10,6 +10,9 @@ concurrency:
   group: source-checks-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
+  arch:
+    uses: ./.github/workflows/arch.yml
+
   check:
     strategy:
       matrix:

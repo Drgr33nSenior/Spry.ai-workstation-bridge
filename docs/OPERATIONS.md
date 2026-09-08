@@ -12,6 +12,13 @@ contract and documentation. It does not include credentials, model weights,
 installer source or build inputs. The application has no selected distribution
 licence; resolve the owner licence decision before sharing or selling artifacts.
 
+For a pacman-managed installation, use the [Arch package procedure](ARCH-PACKAGING.md).
+The tagged workflow builds a source-based `PKGBUILD` into a `.pkg.tar.zst`; local
+`make arch-source VERSION=v1.0.0` generates the recipe and verified source input.
+The package ships examples, not active configuration, and does not start services.
+Arch system hooks can create declared accounts/directories and reload unit
+definitions. Review allocated UIDs and complete the steps below before startup.
+
 Prepare a separate reviewed installed runtime bundle from the reference project.
 The bundle must include `bin/workstationctl`, `lib/common.sh`, all sourced
 `lib/workstation/*.sh`, `versions.lock`, and supporting files required by the

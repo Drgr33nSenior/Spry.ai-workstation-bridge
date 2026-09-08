@@ -2,7 +2,7 @@ SHELL := /bin/sh
 export GOTOOLCHAIN := local
 export CGO_ENABLED := 0
 
-.PHONY: check toolchain fmt vet test race build package generate generated openapi manifests security browser systemd
+.PHONY: check toolchain fmt vet test race build package arch-source generate generated openapi manifests security browser systemd
 
 check: toolchain fmt vet test race generated openapi manifests build security systemd
 
@@ -37,6 +37,13 @@ package: toolchain
 	GOOS=darwin GOARCH=arm64 go build -trimpath -buildvcs=false -ldflags=-buildid= -o dist/darwin-arm64/bridgectl ./cmd/bridgectl
 	GOOS=darwin GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags=-buildid= -o dist/darwin-amd64/bridgectl ./cmd/bridgectl
 	go run ./cmd/bridge-package
+
+# arch-source creates source-only inputs for a reviewed local makepkg run. It
+# never installs a package or starts a service. VERSION must be a stable tag.
+arch-source: export BRIDGE_ARCH_VERSION := $(value VERSION)
+arch-source: toolchain
+	@test -n "$$BRIDGE_ARCH_VERSION" || { echo 'Set VERSION to vMAJOR.MINOR.PATCH'; exit 1; }
+	go run ./cmd/bridge-arch-package --version "$$BRIDGE_ARCH_VERSION"
 
 generate:
 	go run ./cmd/bridge-apigen
