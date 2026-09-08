@@ -1,9 +1,14 @@
 # September 2026 remediation and migration
 
-Review baseline: `264e09e`, inspected on 2026-09-08. The five fixes change
+Initial review baseline: `264e09e`, inspected on 2026-09-08. The five fixes change
 publication permissions, recovery admission/inspection, delegated cgroups and
 browser sessions. They do not qualify GPUs or change installed systems.
 See [VERIFICATION.md](VERIFICATION.md) for observed checks and exclusions.
+
+Round two uses baseline `b21c86d`, reviewed on the same date. It corrects the
+publication design against `RestrictSUIDSGID=yes` and makes browser-policy tests
+detect removal of their intended checks. Recovery, browser identity/session
+formats, worker cgroups, journals and adapter contracts are unchanged.
 
 ## Upgrade prerequisites
 
@@ -69,31 +74,51 @@ checked 2026-09-08. HTTPS is not a claim of port isolation.
 
 ## Published model permissions
 
-The service keeps `UMask=0077`. A private setgid mode-0700 partial container
-contains the verified snapshot until atomic publication. Published model-ID,
-revision and manifest-listed nested directories use 2750; model files and the
-receipt use 0640. All retain the reviewed model-root group. No arbitrary recursive
-chmod/chown, group change, symlink traversal or broad path permission change is
-exposed. The root helper still independently verifies qualification.
+The service keeps `UMask=0077`, `RestrictSUIDSGID=yes`, its unprivileged identity
+and its existing writable-path allowlist. The administrator-provisioned model
+root remains `bridge:<reviewed workload reader GID>`, mode **2750**. Bridge never
+changes that root's permissions or any inode's group.
+
+New partial containers and all their children inherit the reader GID from this
+root. On Linux, directory creation also inherits setgid without a syscall that
+requests that bit. All files, nested directories and the receipt are created
+before final permissions are prepared. The private `.partial-*` ancestor stays
+owner-only `0700` (plus inherited setgid on Linux) until atomic publication.
+
+Published model-ID, revision and manifest-listed nested directories use **0750**;
+files and the receipt use **0640**. These chmod requests clear setgid and preserve
+the reader GID. Later revisions are constructed under a new root-level partial
+container, not inside the published model-ID directory; rename preserves their
+GID. Reader access does not require setgid on published directories. Permission
+changes sync the checked inode before returning; file hashes and directory
+publication retain their durability checks. A failed rename retains the prepared
+snapshot below its private ancestor, never at the publication path.
+
+The earlier explicit setgid chmod requests conflicted with systemd's filter.
+The mechanism was verified on 2026-09-08 in systemd revision
+`ce04f8a331a54ea6c15d602b56791dbfa4785b70`, functions
+[`seccomp_restrict_sxid` and `seccomp_restrict_suid_sgid`](https://github.com/systemd/systemd/blob/ce04f8a331a54ea6c15d602b56791dbfa4785b70/src/shared/seccomp-util.c),
+and the [matching manual source](https://github.com/systemd/systemd/blob/ce04f8a331a54ea6c15d602b56791dbfa4785b70/man/systemd.exec.xml).
+This is a source pin, not discovery of the workstation's installed systemd.
+Do not disable the restriction or change the umask to recover staging.
 
 To identify an older incorrectly permissioned snapshot, submit `model.verify`
 for its selected model ID. To repair, submit a reviewed `model.stage` plan for
 the same ID/revision. Repeated staging validates the complete receipt, exact tree
 and hashes before repairing only those managed paths; it does not redownload an
-already valid snapshot. Invalid receipts, changed files, unexpected files or
-wrong groups refuse repair. Preserve them for owner investigation.
+already valid snapshot. Valid legacy 2750 directories are accepted by verify;
+repeat stage normalizes only the selected tree to 0750. Older 0700/2700
+directories and 0600 files can be repaired if the service owner can inspect
+every required inode and all evidence verifies. Invalid/missing receipts,
+changed files, unexpected entries, symlinks or wrong groups refuse repair before
+changing its permissions. No recursive chmod/chown endpoint is exposed. The
+root helper still independently verifies qualification.
 
-The isolated Linux cross-UID check passed under `0077` with synthetic identities and tiny
-files: the reader group opened nested published files and received EACCES on
-private partials. Repeat on an authorized disposable Linux environment only,
-as root so the test can start synthetic UIDs (never against a real model root):
-
-```sh
-(umask 0077; BRIDGE_STAGING_CROSS_UID=1 env GOTOOLCHAIN=local CGO_ENABLED=0 go test ./internal/adapters -run '^TestStagingCrossUIDReaderQualification$' -count=1 -v)
-```
-
-Installed filesystem ACLs, workload group mapping and PVC access still require
-target qualification; mode bits alone do not establish those boundaries.
+The first remediation's umask tests and root-run staging followed by a synthetic
+Linux reader probe did **not** establish service-sandbox compatibility. The
+round-two qualification below uses an unprivileged writer with an actual syscall
+filter. Installed filesystem ACLs, workload group mapping, PVC access and the
+complete installed unit still require target qualification.
 
 Use the current target and revision from `bridgectl config` in a local draft:
 
@@ -120,6 +145,67 @@ private partials count against storage budgets and are not automatically deleted
 If a published receipt is missing or malformed, restore only that exact snapshot
 from an owner-verified backup with matching manifest/hashes, through stopped-writer
 host maintenance. Do not fabricate a receipt or widen permissions to clear a fence.
+
+If inode ownership/group or ancestor access prevents verified repair, stop here.
+During reviewed offline maintenance, stop all model-root writers and preserve an
+owner-verified backup of the exact snapshot, receipt and journals. Compare the
+selected revision's manifest with `stat`/hash evidence for each explicit path.
+Restore the exact snapshot from a verified backup with the approved ownership;
+then run the verify/plan/stage commands above. There is no safe generic chown or
+recursive chmod command for an unverified tree. Do not remove partials or journal
+records, fabricate receipts, roll back to setgid chmod calls, or widen access.
+
+## Staging sandbox qualification
+
+Prerequisites: a reviewed source checkout, the pinned Go toolchain, Bash, and an
+already authorized local disposable Docker environment with the following image
+cached: `golang@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b`.
+The runner does not pull images. Do not start a privileged container, add
+capabilities, use a remote engine, mount workstation storage, or weaken a host
+security policy to obtain a result. Run from the source checkout, not the
+installed binary archive:
+
+```sh
+BRIDGE_STAGING_SANDBOX_RUN=1 bash scripts/test-staging-restrict-sxid-linux.sh
+```
+
+The default endpoint is `unix:///var/run/docker.sock`. For an already reviewed
+alternative local socket, set `BRIDGE_STAGING_SANDBOX_DOCKER_HOST=unix:///absolute/socket`.
+The runner ignores remote Docker contexts and uses an empty credential directory.
+It requires an explicit opt-in and a digest-pinned, already cached image.
+
+Expected: `TestStagingRestrictSUIDSGID` and
+`TestStagingRestrictSUIDSGIDReaderProbe` both pass. The writer is UID 21341 with
+primary GID 21343, no reader-group membership and no capabilities. The model
+root has GID 21342; a different UID 21344 reads only through that reader group.
+The test uses tiny in-memory inputs, `0077`, and a synchronized process-wide
+seccomp filter. Setgid chmod/fchmod controls must fail with EPERM; ordinary
+reader-mode calls must succeed. The reader must read published nested files and
+the receipt, cannot write them, and receives EACCES on every retained partial.
+
+Only container-local tmpfs is writable. The container has no network, host
+mounts, exposed ports or added capabilities, and expires after 20 seconds.
+Its synthetic fixture state is disposable; no workstation journal, model or
+partial is removed. A failure is a failed qualification, not permission to
+retry without the filter. Retain the output and investigate before using Bridge
+against real storage.
+
+This tests the native amd64/arm64 set-ID syscall rules, including openat2 ENOSYS,
+not the complete systemd unit, all compatibility ABIs, filesystem ACLs, durable
+storage media or a real workload PVC. The rule set is tied to the source pin
+above; compare it with the target's installed systemd before deployment.
+On the authorized target, these commands inspect rather than change the unit:
+
+```sh
+systemd --version
+systemctl show bridged.service -p User -p Group -p UMask -p RestrictSUIDSGID -p NoNewPrivileges -p ReadWritePaths -p CapabilityBoundingSet
+stat -c '%a %u:%g %n' /srv/ai/bridge-models
+```
+
+Expect the reviewed unprivileged identity, UMask 0077, RestrictSUIDSGID enabled,
+no capabilities and only the packaged writable paths. Complete
+[target model qualification](QUALIFICATION.md#3-qualify-model-image-and-serving-configuration)
+with the actual reader GID/PVC before relying on service access.
 
 ## Recovery and baseline session restoration
 

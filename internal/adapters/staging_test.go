@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/catalog"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/domain"
 	"io"
 	"net"
 	"net/http"
@@ -121,7 +123,13 @@ func TestCancellationRetainsPartialWithoutReady(t *testing.T) {
 
 func TestPublicationFailureRetainsVerifiedPrivateSnapshot(t *testing.T) {
 	s, m := fixtureStager(t, []byte("fixture"))
-	s.rename = func(*os.Root, string, string) error { return errors.New("injected atomic publication failure") }
+	s.rename = func(root *os.Root, oldName, newName string) error {
+		assertPrivatePartial(t, s.root)
+		if _, err := validateSnapshot(context.Background(), root, oldName, m, true); err != nil {
+			t.Fatalf("snapshot not fully prepared before publication: %v", err)
+		}
+		return errors.New("injected atomic publication failure")
+	}
 	if _, err := s.Stage(context.Background(), m, nil); err == nil {
 		t.Fatal("published despite injected rename failure")
 	}
@@ -170,9 +178,23 @@ func TestStagingPublishedPermissionsUnderServiceUmaskHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	syscall.Umask(int(value))
+	for _, existingParent := range []bool{false, true} {
+		t.Run(fmt.Sprint("existing-parent=", existingParent), func(t *testing.T) {
+			exerciseStagingPermissions(t, existingParent)
+		})
+	}
+}
 
+func exerciseStagingPermissions(t *testing.T, existingParent bool) {
+	t.Helper()
 	body := []byte("nested fixture model")
 	s, m := fixtureStager(t, body)
+	downloads := 0
+	transport := s.client.Transport
+	s.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		downloads++
+		return transport.RoundTrip(r)
+	})
 	digest := sha256.Sum256(body)
 	m.Files = []catalog.File{
 		{Path: "nested/one/weights.safetensors", Size: int64(len(body)), Algorithm: "sha256", Digest: hex.EncodeToString(digest[:])},
@@ -180,11 +202,14 @@ func TestStagingPublishedPermissionsUnderServiceUmaskHelper(t *testing.T) {
 	}
 	// A previous service version can have created the model-ID parent under the
 	// restrictive service umask. Staging must repair this one canonical parent.
-	if err = os.Mkdir(filepath.Join(s.root, m.ID), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.Chmod(filepath.Join(s.root, m.ID), 0700); err != nil {
-		t.Fatal(err)
+	var err error
+	if existingParent {
+		if err = os.Mkdir(filepath.Join(s.root, m.ID), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.Chmod(filepath.Join(s.root, m.ID), 0700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if _, err = s.Stage(context.Background(), m, nil); err != nil {
 		t.Fatal(err)
@@ -193,12 +218,23 @@ func TestStagingPublishedPermissionsUnderServiceUmaskHelper(t *testing.T) {
 	if _, err = s.Verify(context.Background(), m); err != nil {
 		t.Fatal(err)
 	}
+	// A model-ID parent is now 0750, without setgid. Later revisions still
+	// inherit the reader GID beneath the model root, then retain it on rename.
+	second := m
+	second.Revision = strings.Repeat("d", 40)
+	if _, err = s.Stage(context.Background(), second, nil); err != nil {
+		t.Fatal("second revision beneath non-setgid model parent", err)
+	}
+	assertPublishedModes(t, s.root, second)
 
 	// A failed transfer retains data below an owner-only .partial-* parent even
 	// though successful snapshots are group-readable after publication.
 	partial := m
 	partial.Revision = strings.Repeat("b", 40)
-	if _, err = s.Stage(context.Background(), partial, func(string, int64) error { return context.Canceled }); !errors.Is(err, context.Canceled) {
+	if _, err = s.Stage(context.Background(), partial, func(string, int64) error {
+		assertPrivatePartial(t, s.root)
+		return context.Canceled
+	}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	assertPrivatePartial(t, s.root)
@@ -226,9 +262,27 @@ func TestStagingPublishedPermissionsUnderServiceUmaskHelper(t *testing.T) {
 	assertPrivatePartial(t, s.root)
 
 	// Repair is deliberately bounded to the verified model-ID/revision snapshot.
-	// It repairs the exact manifest tree and receipt, then a repeat stage remains
-	// a refusal rather than an overwrite.
+	// Legacy 2750 snapshots remain valid without mutation. Repeat staging can
+	// normalize them without redownloading or requesting setgid in chmod.
 	published, _ := modelPrefix(m)
+	for _, rel := range []string{m.ID, published, published + "/nested", published + "/nested/one"} {
+		if err = os.Chmod(filepath.Join(s.root, rel), os.ModeSetgid|0750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = s.Verify(context.Background(), m); err != nil {
+		t.Fatal("legacy 2750 snapshot refused", err)
+	}
+	beforeRepeat := downloads
+	if _, err = s.Stage(context.Background(), m, nil); err != nil {
+		t.Fatal("legacy 2750 repeat stage refused", err)
+	}
+	assertPublishedModes(t, s.root, m)
+	if downloads != beforeRepeat {
+		t.Fatal("valid repeat stage redownloaded model")
+	}
+	// Older restrictive modes can also be repaired, only after all evidence
+	// validates. Do not touch other revisions or the administrator model root.
 	for _, rel := range []string{"", "nested", "nested/one"} {
 		if err = os.Chmod(filepath.Join(s.root, published, rel), 0700); err != nil {
 			t.Fatal(err)
@@ -251,6 +305,14 @@ func TestStagingPublishedPermissionsUnderServiceUmaskHelper(t *testing.T) {
 	assertPublishedModes(t, s.root, m)
 	if repaired, repairErr := s.Stage(context.Background(), m, nil); repairErr != nil || len(repaired) != len(m.Files) {
 		t.Fatal("repeat staging did not use bounded verified repair", repaired, repairErr)
+	}
+	if downloads != beforeRepeat {
+		t.Fatal("permission repair redownloaded model")
+	}
+	assertPublishedModes(t, s.root, second)
+	rootInfo, err := os.Stat(s.root)
+	if err != nil || rootInfo.Mode().Perm() != 0750 || rootInfo.Mode()&os.ModeSetgid == 0 {
+		t.Fatal("administrator model-root mode changed", rootInfo, err)
 	}
 	if err = os.WriteFile(filepath.Join(s.root, published, ".bridge-receipt.json"), []byte("not a receipt"), 0640); err != nil {
 		t.Fatal(err)
@@ -276,7 +338,7 @@ func assertPublishedModes(t *testing.T, root string, m catalog.Model) {
 	}
 	for _, rel := range []string{m.ID, prefix, prefix + "/nested", prefix + "/nested/one"} {
 		info, err := os.Lstat(filepath.Join(root, rel))
-		if err != nil || !info.IsDir() || info.Mode().Perm() != 0750 || info.Mode()&os.ModeSetgid == 0 {
+		if err != nil || !info.IsDir() || info.Mode().Perm() != 0750 || info.Mode()&(os.ModeSetgid|os.ModeSetuid|os.ModeSticky) != 0 {
 			t.Fatalf("published directory %s has mode %v: %v", rel, info, err)
 		}
 		owner, ok := info.Sys().(*syscall.Stat_t)
@@ -293,6 +355,57 @@ func assertPublishedModes(t *testing.T, root string, m catalog.Model) {
 		if !ok || owner.Gid != rootOwner.Gid {
 			t.Fatalf("published file %s lost the reviewed reader group", rel)
 		}
+	}
+}
+
+func TestStagingRepairRefusesUnverifiedSnapshot(t *testing.T) {
+	for _, fault := range []string{"missing receipt", "corrupt receipt", "corrupt model", "extra file", "extra directory", "symlink"} {
+		t.Run(fault, func(t *testing.T) {
+			s, m := fixtureStager(t, []byte("fixture"))
+			if _, err := s.Stage(context.Background(), m, nil); err != nil {
+				t.Fatal(err)
+			}
+			prefix, _ := modelPrefix(m)
+			snapshot := filepath.Join(s.root, prefix)
+			receipt := filepath.Join(snapshot, ".bridge-receipt.json")
+			var err error
+			switch fault {
+			case "missing receipt":
+				err = os.Rename(receipt, filepath.Join(t.TempDir(), "preserved-receipt.json"))
+			case "corrupt receipt":
+				err = os.WriteFile(receipt, []byte("invalid receipt"), 0640)
+			case "corrupt model":
+				err = os.WriteFile(filepath.Join(snapshot, m.Files[0].Path), []byte("changed"), 0640)
+			case "extra file":
+				err = os.WriteFile(filepath.Join(snapshot, "unreviewed"), []byte("preserve evidence"), 0600)
+			case "extra directory":
+				err = os.Mkdir(filepath.Join(snapshot, "unreviewed"), 0700)
+			case "symlink":
+				err = os.Symlink(t.TempDir(), filepath.Join(snapshot, "unreviewed"))
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.Chmod(filepath.Join(s.root, m.ID), 0700); err != nil {
+				t.Fatal(err)
+			}
+			s.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+				t.Fatal("unsafe repair attempted a replacement download")
+				return nil, errors.New("unexpected download")
+			})
+			for _, repair := range []func(context.Context, catalog.Model) ([]domain.Artifact, error){
+				s.RepairPublishedPermissions,
+				func(ctx context.Context, m catalog.Model) ([]domain.Artifact, error) { return s.Stage(ctx, m, nil) },
+			} {
+				if _, err = repair(context.Background(), m); err == nil {
+					t.Fatal("unverified snapshot repaired")
+				}
+				info, err := os.Stat(filepath.Join(s.root, m.ID))
+				if err != nil || info.Mode().Perm() != 0700 {
+					t.Fatal("refused repair altered parent permissions", info, err)
+				}
+			}
+		})
 	}
 }
 

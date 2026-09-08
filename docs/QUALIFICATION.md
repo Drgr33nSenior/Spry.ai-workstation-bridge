@@ -4,7 +4,7 @@
 not a claim about the development Mac or the expected Threadripper workstation.
 Use the exact installed adapter contract v1 and reviewed non-production target.
 The [remediation qualification and migration guide](REMEDIATION.md) adds the
-restrictive-umask reader test, failed-restore-chain recovery, dedicated HTTPS
+restrictive-umask and unprivileged syscall-sandbox reader tests, failed-restore-chain recovery, dedicated HTTPS
 browser boundary and authorized disposable cgroup probe. Complete those checks
 before relying on these boundaries on the target.
 Do not execute destructive installer/boot/firmware commands as part of these
@@ -107,6 +107,16 @@ provenance. Confirm budget/free-space refusal before a large download. Interrupt
 a controlled stage; no partial directory may appear ready. Re-plan/verify using
 the pinned revision after resolving the interruption. Do not delete shared model
 directories or redownload into writable container layers.
+
+First run the disposable [staging sandbox qualification](REMEDIATION.md#staging-sandbox-qualification).
+Its syscall filter is not the complete packaged systemd unit. On the installed
+target, confirm `UMask=0077` and `RestrictSUIDSGID=yes` remain active, the model
+root is 2750 with the approved reader GID, and a staged revision has 0750
+directories and 0640 files/receipt with that same GID. Verify a second revision
+and repeat-stage repair. Confirm read-only access through the actual workload
+PVC/group mapping and denial through every retained private partial ancestor.
+Stop qualification on any mismatch; retain the operation and filesystem evidence
+and use the bounded repair procedure. Do not alter unit sandbox controls.
 
 Use the existing owner model/ROCm qualification procedure in reference
 `docs/MODELS.md`, `AI-PERFORMANCE.md` and `ROCM.md`. Available diagnostic contracts

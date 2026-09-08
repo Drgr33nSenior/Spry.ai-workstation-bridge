@@ -48,11 +48,8 @@ type stagedReceipt struct {
 }
 
 const (
-	readerDirectoryMode fs.FileMode = os.ModeSetgid | 0750
+	readerDirectoryMode fs.FileMode = 0750
 	readerFileMode      fs.FileMode = 0640
-	// Keep setgid while denying all group traversal: children must inherit the
-	// reviewed reader group even though partial data remains owner-only.
-	privateDirectoryMode fs.FileMode = os.ModeSetgid | 0700
 )
 
 var origins = map[string]bool{"huggingface.co": true, "cdn-lfs.huggingface.co": true, "cdn-lfs.hf.co": true, "cdn-lfs-us-1.hf.co": true, "cas-bridge.xethub.hf.co": true}
@@ -230,8 +227,10 @@ func requireReaderDirectory(root *os.Root, p string, group uint32) error {
 	if e != nil {
 		return e
 	}
-	if i.Mode().Perm() != 0750 || i.Mode()&os.ModeSetgid == 0 {
-		return errors.New("published model directory is not group-traversable setgid mode 2750")
+	// Legacy 2750 snapshots remain readable. Setgid is needed only while
+	// constructing new trees under the administrator-provisioned model root.
+	if i.Mode().Perm() != readerDirectoryMode || i.Mode()&(os.ModeSetuid|os.ModeSticky) != 0 {
+		return errors.New("published model directory is not group-traversable mode 0750 or legacy 2750")
 	}
 	return nil
 }
@@ -241,7 +240,7 @@ func requireReaderFile(root *os.Root, p string, group uint32) error {
 	if e != nil {
 		return e
 	}
-	if i.Mode().Perm() != readerFileMode || i.Mode()&(os.ModeSetgid|os.ModeSticky) != 0 {
+	if i.Mode().Perm() != readerFileMode || i.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
 		return errors.New("published model file is not group-readable mode 0640")
 	}
 	return nil
@@ -408,7 +407,7 @@ func setPublishedSnapshotPermissions(root *os.Root, snapshot string, m catalog.M
 		if _, e = checkedDirectory(root, p, group); e != nil {
 			return e
 		}
-		if e = root.Chmod(p, readerDirectoryMode); e != nil {
+		if e = chmodAndSync(root, p, readerDirectoryMode); e != nil {
 			return e
 		}
 		if e = requireReaderDirectory(root, p, group); e != nil {
@@ -420,12 +419,58 @@ func setPublishedSnapshotPermissions(root *os.Root, snapshot string, m catalog.M
 		if _, e = checkedRegularFile(root, p, group); e != nil {
 			return e
 		}
-		if e = root.Chmod(p, readerFileMode); e != nil {
+		if e = chmodAndSync(root, p, readerFileMode); e != nil {
 			return e
 		}
 		if e = requireReaderFile(root, p, group); e != nil {
 			return e
 		}
+	}
+	return nil
+}
+
+// Change only an already checked managed inode. The open descriptor prevents a
+// pathname replacement between chmod and fsync; SameFile rejects a replacement
+// during open. Model-root writers remain restricted by administrator policy.
+func chmodAndSync(root *os.Root, p string, mode fs.FileMode) error {
+	before, err := root.Lstat(p)
+	if err != nil {
+		return err
+	}
+	if !before.IsDir() && !before.Mode().IsRegular() {
+		return errors.New("refusing permissions on non-managed inode")
+	}
+	f, err := root.Open(p)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	after, err := f.Stat()
+	if err != nil || !os.SameFile(before, after) {
+		return errors.New("managed inode changed before permission update")
+	}
+	// Never request setgid, even when inherited: RestrictSUIDSGID rejects that
+	// syscall. Clearing it preserves the reader GID and requires no capability.
+	if err = f.Chmod(mode); err != nil {
+		return err
+	}
+	return f.Sync()
+}
+
+func requirePrivateStagingDirectory(root *os.Root, p string) error {
+	group, err := rootGroup(root)
+	if err != nil {
+		return err
+	}
+	i, err := checkedDirectory(root, p, group)
+	if err != nil {
+		return err
+	}
+	// Linux inherits setgid here; BSD-derived filesystems inherit the parent
+	// GID without necessarily copying that bit. Verify the required identity,
+	// not a platform-specific inheritance mechanism, on every created inode.
+	if i.Mode().Perm() != 0700 || i.Mode()&(os.ModeSetuid|os.ModeSticky) != 0 {
+		return errors.New("partial model directory must be owner-only")
 	}
 	return nil
 }
@@ -439,7 +484,7 @@ func setModelParentPermissions(root *os.Root, prefix string) error {
 	if _, e = checkedDirectory(root, parent, group); e != nil {
 		return e
 	}
-	if e = root.Chmod(parent, readerDirectoryMode); e != nil {
+	if e = chmodAndSync(root, parent, readerDirectoryMode); e != nil {
 		return e
 	}
 	return requireReaderDirectory(root, parent, group)
@@ -562,21 +607,17 @@ func (s *Stager) Stage(ctx context.Context, m catalog.Model, progress func(strin
 		return nil, e
 	}
 	tmpName := filepath.Base(tmp)
-	// MkdirTemp is owner-only, but make that invariant explicit rather than
-	// depending on either its implementation or the service umask. The child
-	// snapshot can receive reader modes while this parent keeps it private until
-	// the atomic rename into the published model-ID directory.
-	if e = root.Chmod(tmpName, privateDirectoryMode); e != nil {
+	// Creation inherits setgid/GID from the reviewed root without requesting
+	// setgid in a chmod syscall. Keep this private ancestor until atomic rename,
+	// including while preparing reader modes on the completed child snapshot.
+	if e = requirePrivateStagingDirectory(root, tmpName); e != nil {
 		return nil, e
-	}
-	if i, privateErr := root.Lstat(tmpName); privateErr != nil || !i.IsDir() || i.Mode().Perm() != 0700 || i.Mode()&os.ModeSetgid == 0 {
-		return nil, errors.New("partial model staging directory is not owner-only")
 	}
 	snapshot := tmpName + "/snapshot"
 	if e = root.Mkdir(snapshot, 0700); e != nil {
 		return nil, e
 	}
-	if e = root.Chmod(snapshot, privateDirectoryMode); e != nil {
+	if e = requirePrivateStagingDirectory(root, snapshot); e != nil {
 		return nil, e
 	}
 	var artifacts []domain.Artifact
@@ -693,8 +734,8 @@ func (s *Stager) Stage(ctx context.Context, m catalog.Model, progress func(strin
 	if e = setPublishedSnapshotPermissions(root, snapshot, m); e != nil {
 		return nil, e
 	}
-	if i, privateErr := root.Lstat(tmpName); privateErr != nil || !i.IsDir() || i.Mode().Perm() != 0700 || i.Mode()&os.ModeSetgid == 0 {
-		return nil, errors.New("partial model staging directory lost owner-only protection")
+	if e = requirePrivateStagingDirectory(root, tmpName); e != nil {
+		return nil, e
 	}
 	if _, e = root.Lstat(prefix); e == nil {
 		return nil, errors.New("model publication conflict")

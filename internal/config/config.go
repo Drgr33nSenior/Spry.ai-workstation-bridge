@@ -50,6 +50,11 @@ const (
 	DemoBrowserSessionPurpose  = "demo-browser-v2"
 )
 
+var (
+	errLiveBrowserSessionsHTTPS = errors.New("live browser sessions require HTTPS with certificate and key files")
+	errLiveBrowserSessionsDNS   = errors.New("live browser sessions require a dedicated trusted DNS management hostname, not localhost, a single-label host or an IP literal")
+)
+
 // BrowserSessionsEnabled separates disposable HTTP demo sessions from live
 // management sessions. Live browser sessions require the explicit policy flag.
 func (c Config) BrowserSessionsEnabled() bool {
@@ -71,6 +76,25 @@ func (c Config) BrowserSessionPurpose() string {
 		return LiveBrowserSessionPurpose
 	}
 	return DemoBrowserSessionPurpose
+}
+
+// validateBrowserSessionPolicy keeps the live browser-session trust boundary
+// independent of the host platform. Validate applies the rest of the live
+// adapter policy afterwards. Cookies are host-scoped, not port-scoped: an
+// enabled hostname therefore identifies a single trusted HTTPS management
+// boundary, including every service that can receive its cookies.
+func validateBrowserSessionPolicy(c Config, origin *url.URL) error {
+	if c.Mode != "live" || !c.BrowserSessions {
+		return nil
+	}
+	if origin.Scheme != "https" || c.TLSCertFile == "" || c.TLSKeyFile == "" {
+		return errLiveBrowserSessionsHTTPS
+	}
+	host := origin.Hostname()
+	if host == "" || !strings.Contains(host, ".") || strings.EqualFold(host, "localhost") || net.ParseIP(host) != nil {
+		return errLiveBrowserSessionsDNS
+	}
+	return nil
 }
 
 func Decode(b []byte, v any) error {
@@ -232,6 +256,9 @@ func (c Config) Validate() error {
 	if !found {
 		return errors.New("external_url host must be in allowed_hosts")
 	}
+	if e := validateBrowserSessionPolicy(c, u); e != nil {
+		return e
+	}
 	if !ip.IsLoopback() && (u.Scheme != "https" || c.TLSCertFile == "" || c.TLSKeyFile == "") {
 		return errors.New("non-loopback management requires authenticated HTTPS and a reviewed explicit interface")
 	}
@@ -243,17 +270,6 @@ func (c Config) Validate() error {
 	}
 	if u.Scheme == "https" && (c.TLSCertFile == "" || c.TLSKeyFile == "") {
 		return errors.New("HTTPS requires certificate and key files")
-	}
-	if c.Mode == "live" && c.BrowserSessions {
-		// Cookies are host-scoped, not port-scoped. This is an administrator
-		// acknowledgement that the DNS management identity and every HTTPS
-		// service on it are within the same trusted management boundary.
-		if u.Scheme != "https" || c.TLSCertFile == "" || c.TLSKeyFile == "" {
-			return errors.New("live browser sessions require HTTPS with certificate and key files")
-		}
-		if host := u.Hostname(); host == "" || !strings.Contains(host, ".") || strings.EqualFold(host, "localhost") || net.ParseIP(host) != nil {
-			return errors.New("live browser sessions require a dedicated trusted DNS management hostname, not localhost, a single-label host or an IP literal")
-		}
 	}
 	if c.Mode == "demo" {
 		if !ip.IsLoopback() {

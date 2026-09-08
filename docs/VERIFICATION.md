@@ -23,7 +23,119 @@ change, large model download, workstation build recipe, reboot, publication or
 Git staging/commit/push was performed. Tests used isolated temporary state,
 generated credentials and ephemeral loopback listeners, not user credentials.
 
-## Five-finding remediation from 264e09e
+## Round-two remediation from b21c86d
+
+Baseline `b21c86deb125e64d249ba33a5db7f52656a18c8b` and repository location were
+verified on 2026-09-08. The initially untracked
+`docs/GO-REMEDIATION-ROUND-2-AGENT-PROMPT.md` was preserved. The installer,
+workflows, systemd units, API/schema, dependency pins and journals were not changed.
+
+The browser-policy coverage defect was reproduced before the fix: removing the
+old inline browser-policy block in a temporary Go source overlay left
+`TestLiveBrowserSessionsRequireDedicatedHTTPSIdentity` passing. After the fix,
+removing the production call to `validateBrowserSessionPolicy` in an isolated
+overlay makes all six negative cases of
+`TestLiveBrowserSessionsRejectUnsafeManagementIdentity` fail with the wrong-error
+assertion. The unrelated macOS/Linux/TLS errors no longer satisfy these cases.
+The repository's production policy was never removed; the overlay was not used
+for the normal verification commands. To repeat this sensitivity check against
+the fixed checkout, with a new disposable temporary directory:
+
+```sh
+bridge_mutation=$(mktemp -d)
+cp internal/config/config.go "$bridge_mutation/config.go"
+perl -0pi -e 's@\n\tif e := validateBrowserSessionPolicy\(c, u\); e != nil \{\n\t\treturn e\n\t\}@\n@' "$bridge_mutation/config.go"
+bridge_config_source="$PWD/internal/config/config.go"
+printf '{"Replace":{"%s":"%s"}}\n' "$bridge_config_source" "$bridge_mutation/config.go" > "$bridge_mutation/overlay.json"
+env GOTOOLCHAIN=local CGO_ENABLED=0 go test -overlay "$bridge_mutation/overlay.json" ./internal/config -run '^TestLiveBrowserSessionsRejectUnsafeManagementIdentity$' -count=1 -v
+```
+
+Expected: exit 1 and six failed browser-policy assertions. This is an intentional
+mutation check, not a passing application test. Run normal checks without
+`-overlay`; no repository restoration or weaker validation is needed.
+
+The requested bounded workflow run passed **3/3** uncached race-enabled
+repetitions, with individual durations 2.85s, 2.76s and 2.88s (package 9.885s):
+
+```sh
+env GOTOOLCHAIN=local CGO_ENABLED=1 go test -race ./internal/integration -run '^TestUnifiedCheckMatrixGatesIndependentTagPackages$' -count=3 -v
+```
+
+The earlier review's two-second shell-fixture deadline warning did not recur.
+Its cause remains unknown. No timeout, assertion, workflow condition or retry
+behavior was changed, and no failure was reclassified as a race-test pass.
+
+An initial portable staging implementation required child setgid inheritance;
+focused macOS tests failed because that platform inherits GIDs without necessarily
+copying the setgid bit. The implementation now checks the required GID on each
+inode and keeps private ancestors 0700. The focused tests then passed. Linux
+inheritance and syscall restrictions are separate evidence, recorded below.
+
+### Round-two observed results
+
+The baseline source was also built in an isolated source archive with the new
+Linux sandbox test. Under the actual filter, legacy repeat staging failed with
+`chmodat sandbox-model: operation not permitted`. The permanent test now uses
+a separate `legacy-sandbox-model` ID to also cover fresh parent creation. This
+reproduces the setgid syscall conflict,
+not an installed systemd service failure. The corrected implementation passes
+with the restriction active; it does not disable the service sandbox.
+
+| Check actually run | Observed result |
+|---|---|
+| `env GOTOOLCHAIN=local CGO_ENABLED=0 go test ./internal/adapters ./internal/config ./internal/api ./internal/auth -count=1` | PASS |
+| Supplied `umask 0077` + uncached `TestStageVerifyAtomicAndCorrupt` command | PASS |
+| Uncached `TestStagingPublishedPermissionsUnderServiceUmask`, `TestPublicationFailureRetainsVerifiedPrivateSnapshot`, `TestStagingRepairRefusesUnverifiedSnapshot` | PASS; 0022/0077 subprocesses, fresh/existing parents, nested files, second revision, legacy/restrictive repair and unverified-tree refusal |
+| Uncached `TestLiveBrowserSessionsRejectUnsafeManagementIdentity` | PASS on macOS and Linux; complete positive policy baseline and exact negative errors |
+| Linux `TestCompleteLiveBrowserConfigurationOnLinux`, `TestCompleteLiveCLILoopbackConfigurationOnLinux` | PASS; full configuration validation, not live adapter startup |
+| `BRIDGE_STAGING_SANDBOX_RUN=1 bash scripts/test-staging-restrict-sxid-linux.sh` | PASS; `TestStagingRestrictSUIDSGID` and `TestStagingRestrictSUIDSGIDReaderProbe` on Linux arm64, kernel `6.12.76-linuxkit` |
+| `GOOS=linux GOARCH=amd64` and `arm64` adapter test cross-compilation with `GOTOOLCHAIN=local CGO_ENABLED=0` | PASS; amd64 syscall execution remains NOT RUN |
+| `bash -n scripts/test-staging-restrict-sxid-linux.sh` and ShellCheck | PASS; no lint suppression |
+| `make check` | PASS: formatting, vet, tests, supported race checks, generation/OpenAPI/manifests, builds, module integrity and govulncheck (`No vulnerabilities found`) |
+| `make browser` | PASS: Chrome 152.0.7977.82 / Node v26.8.1, existing API cookie policy over the isolated demo adapter, certificate pinning, identity separation, CSRF/expiry/logout, configuration/apply and failure recovery |
+| `make package` and `shasum -a 256 -c SHA256SUMS` from `dist` | PASS; all three archives, static Linux amd64 server/helper/worker/CLI and macOS arm64/amd64 CLI |
+| `tar -tzf` / `tar -xOf` package inspection | PASS; packaged service retains UMask 0077, RestrictSUIDSGID and the writable-path allowlist; examples retain CLI-only HTTP and dedicated HTTPS browser policy |
+| Documentation audits and `git diff --check` | PASS; preserved user prompt and new untracked source also inspected directly |
+
+The Linux tests used a pre-existing digest-pinned image, an empty Docker
+credential directory, no network or host mounts, a read-only container, no
+capabilities, bounded tmpfs/memory/PIDs and synthetic unprivileged writer/reader
+identities. The writer was not a member of the reader group. A process-wide
+TSYNC seccomp filter rejected set-ID chmod/fchmod controls and allowed ordinary
+0750/0640 modes. Both publication and its receipt were readable but not writable
+by the reader. All retained partial model files and the prepared partial receipt
+returned EACCES. See [exact owner command and limitations](REMEDIATION.md#staging-sandbox-qualification).
+
+Initial Linux attempts failed because the Docker writable layer was full;
+unrelated Docker state was not pruned. Bounded container-only tmpfs provided the
+test filesystem without loosening security controls. One intermediate reader
+probe selected the same revision deliberately damaged by the wrong-GID test;
+it correctly failed. The probe now uses a separately verified second revision,
+while the damaged fixture remains evidence. Initial amd64 test compilation
+found that Go's syscall package lacks `SYS_SECCOMP` on that architecture; the
+test-only arch files now use the verified native syscall numbers. ShellCheck
+initially warned about container-shell variables in quoted strings; quoted
+heredocs resolved the warning without suppressing it. All affected checks were
+rerun after those fixture corrections.
+
+After recording results, `go run ./cmd/bridge-package` refreshed only the archives
+to include the final documentation, followed by checksum verification. The
+existing packager includes the preserved remediation prompt Markdown; no
+artifacts were published. The sandbox runner's temporary binary is removed and
+its container expires; a bounded baseline source/test archive remained in local
+temporary storage when cleanup was refused. It contains no credentials and is
+not application recovery state. No cleanup bypass was attempted.
+
+**NOT RUN:** complete installed systemd sandbox and helper visibility; target
+amd64 syscall-filter runtime; filesystem/PVC/ACL/reader-group deployment mapping;
+durable-media crash qualification; real cgroup enforcement; GPU/model/ROCm or
+workstation-performance qualification. `make check` explicitly reported that
+compatible Linux systemd and Kubernetes admission/scheduling/RBAC enforcement
+require target qualification. Workflow source and the installer were unchanged,
+so workflow lint, installer checks and native Arch package installation were
+not repeated. No live system, credentials, Git history or journal was changed.
+
+## Five-finding remediation from 264e09e (historical)
 
 Verified in the attached GoLand checkout on 2026-09-08, Go 1.27.1/macOS arm64.
 HEAD matched review baseline `264e09e`. The existing untracked
@@ -43,7 +155,7 @@ Linux kernel subtree; new controller fixtures exercise fresh and failed setup.
 
 | Finding | Implementation and permanent regression | Observed result | Remaining qualification |
 |---|---|---|---|
-| 1. Publication umask | `internal/adapters/staging*`: explicit reader modes, private partial parent, exact-tree/receipt/hash verification and bounded repeat-stage repair; subprocess 0022/0077, nested/existing parents, failure and repeat tests | PASS, including actual synthetic cross-UID Linux access under 0077 | Installed workload GID/ACL/PVC mapping and filesystem durability |
+| 1. Publication umask | `internal/adapters/staging*`: explicit reader modes, private partial parent, exact-tree/receipt/hash verification and bounded repeat-stage repair; subprocess 0022/0077, nested/existing parents, failure and repeat tests | PASS, including synthetic cross-UID Linux access under 0077; root-run staging did not test RestrictSUIDSGID | Superseded permission design: round two fixes the service-sandbox conflict. Installed workload GID/ACL/PVC mapping and filesystem durability remain unqualified |
 | 2. Restore chains | `internal/domain/recovery.go`, `engine`, `hostexec`, `store`: linked independent journals, A/B/C, restarts, duplicate/competing requests, unrelated/cyclic/target fences, persistence faults and history retention | PASS in Go fixtures and supported race tests | Actual legacy-session/GPU transition and installed helper visibility |
 | 3. Executor-specific recovery | `internal/adapters/adapter.go`, `engine/recovery*`, worker status: execution hash, active/missing/verified/corrupt publication, source drift, worker journal, manual recovery refusals and no redispatch | PASS with real local adapters over tiny fixtures; no host restore for local/build IDs | Real worker cgroup lifetime and target executor/process evidence |
 | 4. Delegated controllers | `internal/worker/cgroup*`, `linux.go`: parent/supervisor/controller validation, enablement/limit readback and no-launch failures | PASS fixture tests on macOS and isolated Linux; kernel opt-in test safely skipped | NOT RUN — authorized writable delegated subtree unavailable |

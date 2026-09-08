@@ -62,6 +62,14 @@ and toolchain manifests, read-only hardware evidence, cgroup delegation and
 scratch/cache filesystem bounds must exist before it reports recipes available.
 Missing prerequisites produce explicit unavailable states.
 
+Provision the managed model root with the existing reviewed workload reader GID
+and mode 2750 before starting the controller. Only that root needs setgid for
+new revision construction. Published directories are 0750, files/receipts 0640;
+the controller inherits and verifies GIDs, never changes them. Keep both
+`UMask=0077` and `RestrictSUIDSGID=yes`. Follow the bounded
+[snapshot permission migration](REMEDIATION.md#published-model-permissions)
+for legacy snapshots; do not recursively chmod shared storage.
+
 Use `deployment/server.local.example.json` as `/etc/bridge/server.json`. Select
 the actual node name consistently in the server, helper and workstation config.
 Classify the target `dev`, `tst` or `int` from the owner's inventory; production is
