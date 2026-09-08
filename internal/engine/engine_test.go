@@ -20,6 +20,7 @@ import (
 type controlled struct {
 	calls    atomic.Int32
 	result   domain.Result
+	results  []domain.Result
 	inspect  domain.Result
 	observed chan struct{}
 	release  chan struct{}
@@ -32,7 +33,7 @@ func (a *controlled) Validate(context.Context, domain.Draft, domain.Configuratio
 	return domain.Preview{Preconditions: map[string]string{"revision": "reference"}}, nil
 }
 func (a *controlled) Execute(ctx context.Context, x domain.Execution, p func(domain.Progress) error) (domain.Result, error) {
-	a.calls.Add(1)
+	call := a.calls.Add(1)
 	if a.observed != nil {
 		close(a.observed)
 	}
@@ -45,6 +46,9 @@ func (a *controlled) Execute(ctx context.Context, x domain.Execution, p func(dom
 	}
 	if err := p(domain.Progress{Phase: "external-effect", Message: "fixture effect"}); err != nil {
 		return domain.Result{}, err
+	}
+	if int(call) <= len(a.results) {
+		return a.results[call-1], nil
 	}
 	return a.result, nil
 }
@@ -142,6 +146,91 @@ func TestQueuedWorkFencedAfterUncertainEffect(t *testing.T) {
 		t.Fatalf("queued work crossed recovery fence: %+v calls=%d", o, a.calls.Load())
 	}
 }
+
+func TestFailedRestoreChainCanRetry(t *testing.T) {
+	uncertain := domain.Result{State: "recovery-required", RecoveryRequired: true, Phase: "uncertain"}
+	a := &controlled{results: []domain.Result{uncertain, uncertain}, result: domain.Result{State: "succeeded"}}
+	e, owner, c := makeEngine(t, a)
+	first := apply(t, e, owner, plan(t, e, owner, c, "ai"), "chain-original")
+	start(t, e)
+	wait(t, e, first.ID)
+	p, err := e.Recover(context.Background(), owner, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := apply(t, e, owner, p, "chain-attempt-one")
+	if !wait(t, e, second.ID).RecoveryRequired {
+		t.Fatal("restore fixture did not fail uncertainly")
+	}
+	e = restart(t, e, a)
+	p, err = e.Recover(context.Background(), owner, second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := e.Apply(owner, p.ID, "fixture", "chain-attempt-two")
+	if err != nil {
+		t.Fatalf("linked restore retry deadlocked: %v", err)
+	}
+	duplicate, err := e.Apply(owner, p.ID, "fixture", "chain-attempt-two")
+	if err != nil || duplicate.ID != third.ID {
+		t.Fatal("recovery idempotency lost")
+	}
+	if got := wait(t, e, third.ID); got.State != "succeeded" {
+		t.Fatal(got)
+	}
+	e = restart(t, e, a)
+	for _, id := range []string{first.ID, second.ID} {
+		got, _ := e.Operation(id)
+		if got.RecoveryRequired || got.State != "failed" || got.Phase != "resolved-by-explicit-restore" {
+			t.Fatalf("chain history/fence wrong: %+v", got)
+		}
+	}
+	fourth := apply(t, e, owner, plan(t, e, owner, c, "ai"), "after-settlement")
+	if got := wait(t, e, fourth.ID); got.State != "succeeded" || a.calls.Load() != 4 {
+		t.Fatalf("ordinary work did not resume: %+v", got)
+	}
+}
+
+func restart(t *testing.T, e *engine.Engine, a *controlled) *engine.Engine {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := e.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.DB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(filepath.Dir(e.Source.Path), "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	next := engine.New(db, source.New(e.Source.Path), a, "fixture", 4, time.Second)
+	start(t, next)
+	return next
+}
+
+func TestDispatchedLocalRecoveryNeverSelectsHostRestore(t *testing.T) {
+	a := &controlled{}
+	e, owner, c := makeEngine(t, a)
+	for _, action := range []string{"model.stage", "model.verify", "build.start"} {
+		t.Run(action, func(t *testing.T) {
+			id := store.ID()
+			err := e.DB.Update(func(s *store.State) error {
+				s.Operations[id] = domain.Operation{ID: id, Actor: owner.ID, Dispatched: true, RecoveryRequired: true, State: "recovery-required", Plan: domain.Plan{Draft: domain.Draft{Action: action, Target: "fixture", SourceRevision: c.Revision}, Desired: c}}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, err := e.Recover(context.Background(), owner, id)
+			if err == nil && p.Draft.Action == "profile.restore" {
+				t.Fatal("non-host recovery selected GPU restoration")
+			}
+		})
+	}
+}
 func TestPoisonedPersistenceStopsDispatch(t *testing.T) {
 	a := &controlled{result: domain.Result{State: "succeeded"}}
 	e, owner, c := makeEngine(t, a)
@@ -186,6 +275,7 @@ func TestRestartInspectsWithoutRedispatch(t *testing.T) {
 				v := s.Operations[o.ID]
 				v.State = "running"
 				v.Phase = "dispatch-intent"
+				v.Dispatched = true
 				s.Operations[o.ID] = v
 				return nil
 			}); err != nil {

@@ -23,6 +23,88 @@ change, large model download, workstation build recipe, reboot, publication or
 Git staging/commit/push was performed. Tests used isolated temporary state,
 generated credentials and ephemeral loopback listeners, not user credentials.
 
+## Five-finding remediation from 264e09e
+
+Verified in the attached GoLand checkout on 2026-09-08, Go 1.27.1/macOS arm64.
+HEAD matched review baseline `264e09e`. The existing untracked
+`docs/GO-REMEDIATION-AGENT-PROMPT.md` was preserved. An unrelated front-matter edit
+to `.aiassistant/rules/workstation-guardrails.md` appeared during the task and was
+left untouched. No files in the reference
+installer were changed; its focused/required checks were therefore not repeated.
+
+Before fixes, the supplied `0077` staging test failed with reader mode 0600.
+Permanent engine probes failed for A/B restore-chain admission and for dispatched
+model.stage/model.verify/build.start selecting profile.restore. The helper A/B/C
+probe reproduced the independent one-ID fence. The legacy cookie-jar probe
+reproduced cross-port disclosure. A further test reproduced an old session token
+being accepted when rewrapped in the new cookie name; purpose binding fixed it.
+The original cgroup defect remains source-backed, not reproduced on a delegated
+Linux kernel subtree; new controller fixtures exercise fresh and failed setup.
+
+| Finding | Implementation and permanent regression | Observed result | Remaining qualification |
+|---|---|---|---|
+| 1. Publication umask | `internal/adapters/staging*`: explicit reader modes, private partial parent, exact-tree/receipt/hash verification and bounded repeat-stage repair; subprocess 0022/0077, nested/existing parents, failure and repeat tests | PASS, including actual synthetic cross-UID Linux access under 0077 | Installed workload GID/ACL/PVC mapping and filesystem durability |
+| 2. Restore chains | `internal/domain/recovery.go`, `engine`, `hostexec`, `store`: linked independent journals, A/B/C, restarts, duplicate/competing requests, unrelated/cyclic/target fences, persistence faults and history retention | PASS in Go fixtures and supported race tests | Actual legacy-session/GPU transition and installed helper visibility |
+| 3. Executor-specific recovery | `internal/adapters/adapter.go`, `engine/recovery*`, worker status: execution hash, active/missing/verified/corrupt publication, source drift, worker journal, manual recovery refusals and no redispatch | PASS with real local adapters over tiny fixtures; no host restore for local/build IDs | Real worker cgroup lifetime and target executor/process evidence |
+| 4. Delegated controllers | `internal/worker/cgroup*`, `linux.go`: parent/supervisor/controller validation, enablement/limit readback and no-launch failures | PASS fixture tests on macOS and isolated Linux; kernel opt-in test safely skipped | NOT RUN — authorized writable delegated subtree unavailable |
+| 5. Browser identity | `internal/config`, `api`, `auth`, session purpose and local/VPN examples; build-tagged browser fixture | PASS API/config tests and real Chrome live-cookie/CSRF/logout/expiry/isolation flows | Installed private CA/DNS trust, other browsers and real live deployment |
+
+Commands actually run:
+
+```sh
+env GOTOOLCHAIN=local CGO_ENABLED=0 go test ./internal/adapters ./internal/engine ./internal/hostexec ./internal/worker ./internal/api ./internal/auth ./internal/config ./internal/store ./internal/domain -count=1
+(umask 0077; env GOTOOLCHAIN=local CGO_ENABLED=0 go test ./internal/adapters -run '^TestStageVerifyAtomicAndCorrupt$' -count=1)
+make check
+make browser
+make package
+```
+
+All commands above passed. `make check` included formatting, vet, unit/integration
+tests, supported race checks, canonical generation/OpenAPI/manifests, local
+builds, module verification and `govulncheck` (`No vulnerabilities found`).
+The controller/CLI executable integration tests passed. Workflow files, Go
+dependencies, systemd definitions and PKGBUILD template were unchanged, so
+workflow lint and native makepkg were not repeated. Source manifest validation
+checked the new CLI-only/local and browser-enabled/VPN examples.
+Archive checksum verification and file-list inspection passed. The existing
+documentation packager also includes the preserved remediation prompt Markdown;
+these are local artifacts, not published releases. Review that input before any
+separate owner-authorized distribution. The test-only browser binary is not in
+the release archives.
+
+`make browser` now builds `cmd/bridge-browser-fixture` only with its test build tag.
+It uses real live API/cookie policy over explicitly isolated Demo adapters;
+production `bridged` cannot select this combination. It writes synthetic owner
+credentials into temporary protected files. It does not exercise CLI bootstrap;
+the executable integration suite covers that separately. Chrome 152.0.7977.82
+and Node 26.8.1 passed login, exact draft/plan/apply, session transition, crash and
+recovery/reconnect, mobile layout, CSRF rejection, logout and server-side expiry.
+Only the fixture handles a local signal to expire synthetic sessions. TLS uses
+a per-run hostname-bound certificate; the test client validates its CA/SAN and
+Chrome permits only that ephemeral SPKI, not a blanket certificate bypass. A
+second HTTPS loopback service at an unrelated hostname received no management
+cookie. Cookie-jar tests also cover plaintext same-host/different-port exclusion.
+This supersedes the earlier HTTPS-browser exclusion below, not target TLS
+qualification or the rule that HTTPS cookies share a hostname across ports.
+
+Linux evidence used the public Go 1.27.1 bookworm image, repository digest
+`sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b`.
+Worker fixture tests ran without network, with read-only source, dropped
+capabilities and bounded resources. Cross-UID staging ran with no host mounts,
+network, added capabilities or published ports, under `umask 0077`, with a tiny
+synthetic model and numeric reader UID/GID. The reader could open nested published
+files and received EACCES on private partial content. An initial image-ID lookup
+syntax was refused before container startup; the corrected immutable repository
+digest run passed. No production build, full model download, credential read,
+installer/service operation, cluster change or Git staging/commit/push occurred.
+
+The delegated-cgroup kernel test, bubblewrap enforcement in that image, installed
+systemd behavior, K3s admission/RBAC and GPU/hardware checks are **NOT RUN**.
+The image lacked bubblewrap and no disposable writable cgroup subtree was
+authorized. Cross-builds are not these runtime tests. Follow
+[REMEDIATION.md](REMEDIATION.md) for exact migration, repeat-stage repair,
+recovery, baseline reproduction and opt-in Linux qualification commands.
+
 ## Unified matrix follow-up
 
 Verified 2026-09-08 from the owner's clean `221e124` baseline. Both entry

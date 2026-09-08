@@ -67,7 +67,7 @@ var Endpoints = []Endpoint{
 	{"GET", "/api/v1/operations", "List durable operations, including builds", "viewer", nil, []domain.Operation{}, "200", false},
 	{"GET", "/api/v1/operations/{id}", "Inspect operation phases and recovery requirements", "viewer", nil, domain.Operation{}, "200", false},
 	{"POST", "/api/v1/operations/{id}/cancel", "Request cancellation using observed operation revision", "action-scoped", struct{}{}, domain.Operation{}, "202", false},
-	{"POST", "/api/v1/operations/{id}/recover", "Inspect executor and create an explicit restore plan", "owner", struct{}{}, domain.Plan{}, "201", false},
+	{"POST", "/api/v1/operations/{id}/recover", "Inspect the responsible executor and plan chain restoration or operation reconciliation", "owner", struct{}{}, domain.Plan{}, "201", false},
 	{"GET", "/api/v1/harnesses/{id}/export", "Export verified native non-secret client files", "viewer", nil, domain.Bundle{}, "200", false},
 	{"GET", "/api/v1/credentials", "List credential identifiers, expiry and revocation", "owner", nil, []auth.CredentialInfo{}, "200", false},
 	{"POST", "/api/v1/credentials/{id}/revoke", "Revoke one credential and its browser sessions", "owner", struct{}{}, map[string]string{}, "200", false},
@@ -155,7 +155,7 @@ func Generate() ([]byte, error) {
 		}
 		item[strings.ToLower(e.Method)] = operation
 	}
-	doc := map[string]any{"openapi": "3.1.1", "info": map[string]any{"title": "Spry.ai Workstation Bridge private management API", "version": "1.0.0", "description": "No public management ingress. Explicit local owner bootstrap/recovery has no TCP endpoint. Plans expire after ten minutes; source and external effects are separate. GPU qualification remains independently enforced by the host executor."}, "paths": paths, "security": []any{map[string]any{"bearerAuth": []string{}}, map[string]any{"browserSession": []string{}}}, "components": map[string]any{"securitySchemes": map[string]any{"bearerAuth": map[string]any{"type": "http", "scheme": "bearer", "description": "Cryptographically random, named, expiring, revocable role-scoped credential"}, "browserSession": map[string]any{"type": "apiKey", "in": "cookie", "name": "bridge_session", "description": "Short-lived HttpOnly SameSite=Strict session with Origin and CSRF checks on mutations"}}}}
+	doc := map[string]any{"openapi": "3.1.1", "info": map[string]any{"title": "Spry.ai Workstation Bridge private management API", "version": "1.0.0", "description": "No public management ingress. Explicit local owner bootstrap/recovery has no TCP endpoint. Plans expire after ten minutes; source and external effects are separate. GPU qualification remains independently enforced by the host executor."}, "paths": paths, "security": []any{map[string]any{"bearerAuth": []string{}}, map[string]any{"browserSession": []string{}}}, "components": map[string]any{"securitySchemes": map[string]any{"bearerAuth": map[string]any{"type": "http", "scheme": "bearer", "description": "Cryptographically random, named, expiring, revocable role-scoped credential"}, "browserSession": map[string]any{"type": "apiKey", "in": "cookie", "name": "__Host-bridge_session_v2", "description": "Live browser sessions require explicit browser_sessions policy and a dedicated trusted HTTPS hostname. Secure, HttpOnly, host-only, Path=/, SameSite=Strict with Origin and CSRF checks. Cookies are not port-isolated. Demo uses bridge_demo_session_v2; CLI-only live listeners refuse browser login."}}}}
 	b, e := json.MarshalIndent(doc, "", "  ")
 	return append(b, '\n'), e
 }

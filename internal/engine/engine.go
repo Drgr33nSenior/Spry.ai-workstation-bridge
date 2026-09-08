@@ -40,7 +40,7 @@ func (e *Engine) Start() error {
 	for id, o := range e.DB.View().Operations {
 		if !domain.Terminal(o.State) && o.State != "queued" {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			r, err := e.Adapter.Inspect(ctx, id)
+			r, err := e.inspect(ctx, o)
 			cancel()
 			if err != nil || r.State == "" {
 				r = domain.Result{State: "recovery-required", Phase: "restart-inspection", Message: "executor outcome is unknown; inspect helper/worker recovery state before restore", RecoveryRequired: true}
@@ -83,17 +83,6 @@ func (e *Engine) CreatePlan(ctx context.Context, a auth.Actor, d domain.Draft) (
 		if a.Role != "owner" || (d.Action != "profile.restore" && d.Action != "operation.reconcile") {
 			return domain.Plan{}, domain.Fail("forbidden", "only owner restore plans may reference recovery")
 		}
-		old, ok := e.DB.View().Operations[d.RecoveryID]
-		if !ok || !old.RecoveryRequired {
-			return domain.Plan{}, domain.Fail("conflict", "referenced operation does not require recovery")
-		}
-		if d.Action == "operation.reconcile" && old.Dispatched {
-			return domain.Plan{}, domain.Fail("conflict", "external dispatch requires executor evidence; local source inspection cannot resolve it")
-		}
-		result, err := e.Adapter.Inspect(ctx, d.RecoveryID)
-		if err == nil && (result.State == "running" || result.State == "queued") {
-			return domain.Plan{}, domain.Fail("conflict", "executor still running; recovery cannot race it")
-		}
 	}
 	c, err := e.Source.Read()
 	if err != nil {
@@ -124,7 +113,7 @@ func (e *Engine) CreatePlan(ctx context.Context, a auth.Actor, d domain.Draft) (
 		pv.Consequences = append(pv.Consequences, "New admission budgets apply to future work. Existing cache files are not deleted.")
 	}
 	if d.Action == "operation.reconcile" {
-		pv.Consequences = append(pv.Consequences, "Inspect the durable source revision and close a pre-dispatch failure. No host workload is changed; the previous operation remains failed.")
+		pv.Consequences = append(pv.Consequences, "Recheck source and operation-specific durable executor evidence. No work is redispatched; previous failed attempts remain in history.")
 	}
 	now := time.Now().UTC()
 	p := domain.Plan{ID: store.ID(), Actor: a.ID, Draft: d, Desired: desired, Preview: pv, CreatedAt: now, ExpiresAt: now.Add(10 * time.Minute)}
@@ -140,21 +129,27 @@ func (e *Engine) CreatePlan(ctx context.Context, a auth.Actor, d domain.Draft) (
 	return p, err
 }
 func (e *Engine) preflight(ctx context.Context, d domain.Draft, c domain.Configuration) (domain.Inventory, domain.Preview, error) {
-	if d.Action == "operation.reconcile" {
-		old, ok := e.DB.View().Operations[d.RecoveryID]
-		if !ok || !old.RecoveryRequired || old.Dispatched {
-			return domain.Inventory{}, domain.Preview{}, domain.Fail("conflict", "only a known pre-dispatch failure can be reconciled locally")
+	var recovery domain.Preview
+	if d.RecoveryID != "" || d.Action == "operation.reconcile" {
+		var err error
+		recovery, err = e.recoveryPreflight(ctx, d, c)
+		if err != nil || d.Action == "operation.reconcile" {
+			return domain.Inventory{Target: e.Target}, recovery, err
 		}
-		if c.Revision != old.Plan.Desired.Revision && c.Revision != old.Plan.Draft.SourceRevision {
-			return domain.Inventory{}, domain.Preview{}, domain.Fail("source_drift", "source differs from both sides of the interrupted update; owner review required")
-		}
-		return domain.Inventory{Target: e.Target}, domain.Preview{Preconditions: map[string]string{"recovery_id": old.ID, "source_revision": c.Revision}}, nil
 	}
 	inv, err := e.Adapter.Snapshot(ctx)
 	if err != nil {
 		return inv, domain.Preview{}, err
 	}
 	pv, err := e.Adapter.Validate(ctx, d, c)
+	if d.RecoveryID != "" {
+		if pv.Preconditions == nil {
+			pv.Preconditions = map[string]string{}
+		}
+		for k, v := range recovery.Preconditions {
+			pv.Preconditions[k] = v
+		}
+	}
 	return inv, pv, err
 }
 func changes(a, b domain.Configuration) []domain.Change {
@@ -210,6 +205,9 @@ func (e *Engine) Apply(a auth.Actor, planID, target, key string) (domain.Operati
 		if !domain.RoleAllows(a.Role, p.Draft.Action) {
 			return domain.Fail("forbidden", "role cannot apply this plan")
 		}
+		if p.Draft.RecoveryID != "" && a.Role != "owner" {
+			return domain.Fail("forbidden", "recovery requires owner role")
+		}
 		if target != p.Draft.Target || target != e.Target {
 			return domain.Fail("target_mismatch", "exact target confirmation does not match")
 		}
@@ -222,12 +220,12 @@ func (e *Engine) Apply(a auth.Actor, planID, target, key string) (domain.Operati
 			return domain.Fail("invalid", "plan integrity check failed")
 		}
 		active := 0
+		if err := recoveryAdmission(s.Operations, p.Draft, ""); err != nil {
+			return err
+		}
 		for _, o := range s.Operations {
 			if !domain.Terminal(o.State) {
 				active++
-			}
-			if o.RecoveryRequired && p.Draft.RecoveryID != o.ID && p.Draft.Action != "hardware.refresh" {
-				return domain.Fail("recovery_required", "inspect and resolve the outstanding operation before new mutations")
 			}
 		}
 		if active >= e.Depth || len(s.Operations) >= 500 {
@@ -311,11 +309,11 @@ func (e *Engine) Recover(ctx context.Context, a auth.Actor, id string) (domain.P
 	if !o.RecoveryRequired {
 		return domain.Plan{}, domain.Fail("conflict", "operation does not require recovery")
 	}
-	r, inspectErr := e.Adapter.Inspect(ctx, id)
+	r, inspectErr := e.inspect(ctx, o)
 	if inspectErr == nil && (r.State == "running" || r.State == "queued") {
 		return domain.Plan{}, domain.Fail("conflict", "executor is still running; wait for its durable result")
 	}
-	if inspectErr == nil && domain.Terminal(r.State) && !r.RecoveryRequired {
+	if inspectErr == nil && domain.Terminal(r.State) && r.State != "recovery-required" && !r.RecoveryRequired {
 		if err = e.finish(id, r); err != nil {
 			return domain.Plan{}, err
 		}
@@ -325,9 +323,17 @@ func (e *Engine) Recover(ctx context.Context, a auth.Actor, id string) (domain.P
 	if err != nil {
 		return domain.Plan{}, err
 	}
-	d := domain.Draft{Action: "profile.restore", Target: e.Target, SourceRevision: c.Revision, RecoveryID: id}
-	if !o.Dispatched {
-		d.Action = "operation.reconcile"
+	d := domain.Draft{Action: "operation.reconcile", Target: e.Target, SourceRevision: c.Revision, RecoveryID: id}
+	ops := e.DB.View().Operations
+	chain, chainErr := domain.RecoveryChain(operationLinks(ops), id)
+	if chainErr != nil {
+		return domain.Plan{}, domain.Fail("recovery_required", chainErr.Error())
+	}
+	for member := range chain {
+		previous := ops[member]
+		if previous.RecoveryRequired && previous.Dispatched && domain.HostRestoreRequired(previous.Plan.Draft.Action) {
+			d.Action = "profile.restore"
+		}
 	}
 	return e.CreatePlan(ctx, a, d)
 }
@@ -397,16 +403,14 @@ func (e *Engine) execute(op domain.Operation) {
 		if o.State != "queued" {
 			return domain.Fail("cancelled", "operation no longer queued")
 		}
-		for _, other := range s.Operations {
-			if other.ID != o.ID && other.RecoveryRequired && o.Plan.Draft.RecoveryID != other.ID && o.Plan.Draft.Action != "hardware.refresh" {
-				o.State = "failed"
-				o.Phase = "blocked-by-recovery"
-				o.Message = "an earlier operation requires recovery; no external effect dispatched"
-				o.Revision++
-				o.UpdatedAt = time.Now().UTC()
-				s.Operations[o.ID] = o
-				return nil
-			}
+		if recoveryAdmission(s.Operations, o.Plan.Draft, o.ID) != nil {
+			o.State = "failed"
+			o.Phase = "blocked-by-recovery"
+			o.Message = "an earlier operation requires recovery; no external effect dispatched"
+			o.Revision++
+			o.UpdatedAt = time.Now().UTC()
+			s.Operations[o.ID] = o
+			return nil
 		}
 		credential, ok := s.Credentials[o.Actor]
 		if !ok || credential.Revoked || time.Now().After(credential.ExpiresAt) || !domain.RoleAllows(credential.Role, o.Plan.Draft.Action) || time.Now().After(o.Plan.ExpiresAt) {
@@ -465,7 +469,7 @@ func (e *Engine) execute(op domain.Operation) {
 		return
 	}
 	if op.Plan.Draft.Action == "operation.reconcile" {
-		_ = e.finish(op.ID, domain.Result{State: "succeeded", Phase: "source-reconciled", Message: "source outcome inspected; previous failure retained; no external dispatch"})
+		_ = e.finish(op.ID, domain.Result{State: "succeeded", Phase: "operation-reconciled", Message: "source and executor evidence inspected; previous failures retained; no external dispatch"})
 		return
 	}
 	if op.Plan.Desired.Revision != c.Revision {
@@ -526,13 +530,20 @@ func (e *Engine) finish(id string, r domain.Result) error {
 		s.Operations[id] = o
 		store.Event(s, o.Actor, "operation.complete", id, o.State)
 		if o.State == "succeeded" && o.Plan.Draft.RecoveryID != "" {
-			old, ok := s.Operations[o.Plan.Draft.RecoveryID]
-			if ok {
+			chain, err := domain.RecoveryChain(operationLinks(s.Operations), o.Plan.Draft.RecoveryID)
+			if err != nil {
+				return err
+			}
+			for previous := range chain {
+				old := s.Operations[previous]
+				if previous == id || !old.RecoveryRequired {
+					continue
+				}
 				old.RecoveryRequired = false
 				old.State = "failed"
 				old.Phase = "resolved-by-explicit-restore"
 				if a == "operation.reconcile" {
-					old.Phase = "resolved-by-source-inspection"
+					old.Phase = "resolved-by-operation-inspection"
 					old.SourceUpdated = o.Plan.Desired.Revision == old.Plan.Desired.Revision && old.Plan.Desired.Revision != old.Plan.Draft.SourceRevision
 				}
 				old.Message = "resolved by operation " + id

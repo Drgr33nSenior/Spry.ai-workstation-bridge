@@ -44,13 +44,13 @@ func TestAuthenticationUsesSmallIndexAndPrunesExpiredSessions(t *testing.T) {
 		t.Fatal("auth snapshot aliases the store")
 	}
 	revision := db.View().Revision
-	if _, _, _, err := Login(db, "invalid"); err == nil {
+	if _, _, _, err := Login(db, "invalid", "test-v2"); err == nil {
 		t.Fatal("invalid login accepted")
 	}
 	if db.View().Revision != revision {
 		t.Fatal("invalid login wrote the store")
 	}
-	if _, _, _, err := Login(db, token); err != nil {
+	if _, _, _, err := Login(db, token, "test-v2"); err != nil {
 		t.Fatalf("expired sessions prevented login: %v", err)
 	}
 }

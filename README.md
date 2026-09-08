@@ -10,6 +10,11 @@ endpoints or the installer. Live adapters use the reviewed installer contracts.
 Workload qualification remains an independent owner-controlled prerequisite.
 This repository does not install services or expose public management ingress.
 
+Live browser management requires explicit `browser_sessions: true` and a
+dedicated trusted HTTPS hostname. The live loopback HTTP example is CLI-only;
+demo HTTP below is separate. See the [remediation and migration guide](docs/REMEDIATION.md)
+for session invalidation, model permission repair and recovery-chain behavior.
+
 ## Run the demo
 
 Use Go **1.27.1**, as recorded in `.go-version`. No production Node.js runtime,

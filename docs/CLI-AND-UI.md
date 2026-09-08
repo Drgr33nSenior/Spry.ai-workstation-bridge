@@ -25,7 +25,7 @@ bin/bridgectl --context "$demo_dir/context.json" models
 bin/bridgectl --context "$demo_dir/context.json" resources
 ```
 
-Open `http://127.0.0.1:8743/`. Open the generated owner-only `owner.token` file in your local editor and enter its value in the sign-in field. Do not put the value in a URL, command argument, chat, ordinary terminal output, or inference application. The UI clears the field after exchange and uses a short-lived HttpOnly, SameSite=Strict session cookie. HTTPS adds Secure. Logout revokes the browser session. The UI stores no bearer token in localStorage.
+Open the demo at `http://127.0.0.1:8743/`. Open the generated owner-only `owner.token` file in your local editor and enter its value in the sign-in field. Do not put the value in a URL, command argument, chat, ordinary terminal output, or inference application. The UI clears the field after exchange and uses a short-lived HttpOnly, SameSite=Strict demo session cookie. Logout revokes the browser session. The UI stores no bearer token in localStorage. Live browser sessions require a dedicated trusted HTTPS hostname and explicit `browser_sessions: true`; live HTTP loopback is CLI-only. Never use a live credential with the demo. See [browser migration](REMEDIATION.md#private-browser-migration).
 
 The `DEMO · ISOLATED FIXTURES` label must remain visible. Model staging, builds, device observations, and handovers are simulated. A successful demo operation is not target qualification.
 
@@ -192,6 +192,13 @@ bin/bridgectl --context "$demo_dir/context.json" operations GAMING_OPERATION_ID
 `recover` creates a plan; it does not silently restore. If a surviving executor has since completed, recovery can instead report that its result was recovered and require you to refresh. If it is still running or holder visibility is incomplete, recovery remains refused. The browser exposes the same Preview recovery action and exact-target confirmation.
 
 For a source-update crash before any executor dispatch, owner recovery returns an `operation.reconcile` plan. Review and apply this generated plan through the same commands above. It checks whether durable source matches the previous or requested revision, records the observed source outcome, and leaves the original operation failed with its recovery requirement resolved. It does not dispatch a host action or change GPU workloads. A source revision matching neither side requires owner review; a dispatched operation requires independent executor evidence or a qualified restore.
+
+If restore B also fails, recover A or B to retry the same linked chain. A successful
+C settles the chain but retains A/B as failed history. Unrelated uncertain work
+still blocks admission. Model operations use verified publication evidence, and
+builds use worker journal/cgroup evidence; neither selects GPU restoration.
+See [operation-specific recovery](REMEDIATION.md#recovery-and-baseline-session-restoration)
+for exact commands, permission repair and refusals that need owner investigation.
 
 ## Developer clients
 

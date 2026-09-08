@@ -7,6 +7,7 @@
   "external_url": "http://127.0.0.1:8743",
   "tls_cert_file": "",
   "tls_key_file": "",
+  "browser_sessions": false,
   "owner_uid": 1000,
   "target": "replace-with-reviewed-node-name",
   "environment": "dev",

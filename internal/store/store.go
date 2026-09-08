@@ -33,6 +33,10 @@ type Session struct {
 	CredentialID string    `json:"credential_id"`
 	CSRF         string    `json:"csrf"`
 	ExpiresAt    time.Time `json:"expires_at"`
+	// Purpose binds a persisted verifier to the v2 browser-session policy.
+	// It is deliberately optional in the JSON schema so schema-1 records can
+	// load and be rejected rather than requiring journal deletion.
+	Purpose string `json:"purpose,omitempty"`
 }
 type Audit struct {
 	At     time.Time `json:"at"`
@@ -192,8 +196,23 @@ func prune(v *State) {
 	}
 	// Finished records expire after 30 days. Uncertain/executing operations never
 	// disappear automatically; full capacity refuses new work.
+	// Keep ancestors of retained attempts: pruning a resolved/old parent would
+	// destroy the persisted relationship needed to validate later recovery.
+	retained := map[string]bool{}
+	for id, o := range v.Operations {
+		if !domain.Terminal(o.State) || o.RecoveryRequired || now.Sub(o.UpdatedAt) <= 30*24*time.Hour {
+			for id != "" && !retained[id] {
+				retained[id] = true
+				parent, ok := v.Operations[id]
+				if !ok {
+					break
+				}
+				id = parent.Plan.Draft.RecoveryID
+			}
+		}
+	}
 	for k, o := range v.Operations {
-		if domain.Terminal(o.State) && !o.RecoveryRequired && now.Sub(o.UpdatedAt) > 30*24*time.Hour {
+		if !retained[k] && domain.Terminal(o.State) && !o.RecoveryRequired && now.Sub(o.UpdatedAt) > 30*24*time.Hour {
 			delete(v.Operations, k)
 		}
 	}

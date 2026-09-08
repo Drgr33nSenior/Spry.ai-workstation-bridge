@@ -22,8 +22,6 @@ import (
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/web"
 )
 
-const cookieName = "bridge_session"
-
 type actorKey struct{}
 type attempt struct {
 	n     int
@@ -42,7 +40,7 @@ type Server struct {
 func New(c config.Config, e *engine.Engine, logger *slog.Logger) *Server {
 	s := &Server{Config: c, Engine: e, Logger: logger, attempts: map[string]attempt{}}
 	mux := http.NewServeMux()
-	mux.Handle("/", web.Handler())
+	mux.Handle("/", s.browser(web.Handler()))
 	mux.HandleFunc("GET /health/live", s.live)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	secure := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.authenticate(h)) }
@@ -72,13 +70,22 @@ func New(c config.Config, e *engine.Engine, logger *slog.Logger) *Server {
 	return s
 }
 func (s *Server) Handler() http.Handler { return s.handler }
+func (s *Server) browser(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.Config.BrowserSessionsEnabled() {
+			s.fail(w, domain.Fail("browser_disabled", "live browser management is disabled; use a scoped CLI credential or configure a dedicated trusted HTTPS management identity"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Frame-Options", "DENY")
-		if strings.HasPrefix(s.Config.ExternalURL, "https:") {
+		if s.Config.Mode == "live" && strings.HasPrefix(s.Config.ExternalURL, "https:") {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		}
 		allowed := false
@@ -156,16 +163,20 @@ func (s *Server) authenticate(next http.HandlerFunc) http.Handler {
 			}
 		}
 		if header == "" {
-			c, e := r.Cookie(cookieName)
-			if e != nil {
-				err = domain.Fail("unauthorized", "sign in or use a scoped credential")
+			if !s.Config.BrowserSessionsEnabled() {
+				err = domain.Fail("unauthorized", "sign in with a scoped CLI credential")
 			} else {
-				var session store.Session
-				a, session, err = auth.Session(v, c.Value)
-				if err == nil && r.Method != "GET" && r.Method != "HEAD" {
-					csrf := r.Header.Get("X-CSRF-Token")
-					if r.Header.Get("Origin") != s.Config.ExternalURL || subtle.ConstantTimeCompare([]byte(csrf), []byte(session.CSRF)) != 1 {
-						err = domain.Fail("forbidden", "valid same-origin CSRF token required")
+				c, e := r.Cookie(s.Config.BrowserSessionCookieName())
+				if e != nil {
+					err = domain.Fail("unauthorized", "sign in or use a scoped credential")
+				} else {
+					var session store.Session
+					a, session, err = auth.Session(v, c.Value, s.Config.BrowserSessionPurpose())
+					if err == nil && r.Method != "GET" && r.Method != "HEAD" {
+						csrf := r.Header.Get("X-CSRF-Token")
+						if r.Header.Get("Origin") != s.Config.ExternalURL || subtle.ConstantTimeCompare([]byte(csrf), []byte(session.CSRF)) != 1 {
+							err = domain.Fail("forbidden", "valid same-origin CSRF token required")
+						}
 					}
 				}
 			}
@@ -203,6 +214,10 @@ func (s *Server) read(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	if !s.Config.BrowserSessionsEnabled() {
+		s.fail(w, domain.Fail("browser_disabled", "live browser management requires an explicitly configured dedicated trusted HTTPS management identity"))
+		return
+	}
 	if r.Header.Get("Origin") != s.Config.ExternalURL {
 		s.fail(w, domain.Fail("forbidden", "browser login requires the configured same origin"))
 		return
@@ -219,20 +234,20 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !s.read(w, r, &input) {
 		return
 	}
-	a, token, session, e := auth.Login(s.Engine.DB, input.Credential)
+	a, token, session, e := auth.Login(s.Engine.DB, input.Credential, s.Config.BrowserSessionPurpose())
 	input.Credential = ""
 	if e != nil {
 		s.fail(w, e)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", HttpOnly: true, Secure: strings.HasPrefix(s.Config.ExternalURL, "https:"), SameSite: http.SameSiteStrictMode, Expires: session.ExpiresAt, MaxAge: int(time.Until(session.ExpiresAt).Seconds())})
+	http.SetCookie(w, s.sessionCookie(token, session.ExpiresAt))
 	s.json(w, 200, map[string]any{"actor": a, "csrf": session.CSRF, "expires_at": session.ExpiresAt, "mode": s.Config.Mode})
 }
 func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	var csrf string
 	var expires time.Time
-	if c, e := r.Cookie(cookieName); e == nil {
-		_, session, err := auth.Session(s.Engine.DB.AuthState(), c.Value)
+	if c, e := r.Cookie(s.Config.BrowserSessionCookieName()); e == nil {
+		_, session, err := auth.Session(s.Engine.DB.AuthState(), c.Value, s.Config.BrowserSessionPurpose())
 		if err == nil {
 			csrf = session.CSRF
 			expires = session.ExpiresAt
@@ -241,7 +256,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	s.json(w, 200, map[string]any{"actor": actor(r), "csrf": csrf, "expires_at": expires, "mode": s.Config.Mode})
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	if c, e := r.Cookie(cookieName); e == nil {
+	if c, e := r.Cookie(s.Config.BrowserSessionCookieName()); e == nil {
 		if err := s.Engine.DB.Update(func(v *store.State) error {
 			delete(v.Sessions, auth.Verifier(c.Value))
 			store.Event(v, actor(r).ID, "logout", actor(r).ID, "succeeded")
@@ -251,8 +266,19 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: strings.HasPrefix(s.Config.ExternalURL, "https:"), SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, s.expireSessionCookie(s.Config.BrowserSessionCookieName()))
+	// The old name was used before live browser sessions were restricted to a
+	// dedicated HTTPS identity. It is not accepted, and this best-effort expiry
+	// removes it from a client that still presents it.
+	http.SetCookie(w, s.expireSessionCookie(config.LegacyBrowserSessionCookie))
 	s.json(w, 200, map[string]string{"state": "logged-out"})
+}
+
+func (s *Server) sessionCookie(token string, expires time.Time) *http.Cookie {
+	return &http.Cookie{Name: s.Config.BrowserSessionCookieName(), Value: token, Path: "/", HttpOnly: true, Secure: strings.HasPrefix(s.Config.ExternalURL, "https:"), SameSite: http.SameSiteStrictMode, Expires: expires, MaxAge: int(time.Until(expires).Seconds())}
+}
+func (s *Server) expireSessionCookie(name string) *http.Cookie {
+	return &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: strings.HasPrefix(s.Config.ExternalURL, "https:"), SameSite: http.SameSiteStrictMode}
 }
 func (s *Server) inventory(w http.ResponseWriter, r *http.Request) {
 	inv, e := s.Engine.Snapshot(r.Context())
@@ -461,7 +487,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	switch f.Code {
 	case "unauthorized":
 		status = 401
-	case "forbidden":
+	case "forbidden", "browser_disabled":
 		status = 403
 	case "not_found":
 		status = 404

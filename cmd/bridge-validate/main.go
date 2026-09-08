@@ -133,6 +133,11 @@ func validateExample(name string, data []byte) error {
 		if !contains(c.AllowedHosts, origin.Host) {
 			return errors.New("server origin must be in the explicit Host allowlist")
 		}
+		if c.BrowserSessions {
+			if origin.Scheme != "https" || c.TLSCertFile == "" || c.TLSKeyFile == "" || !strings.Contains(origin.Hostname(), ".") || origin.Hostname() == "localhost" || net.ParseIP(origin.Hostname()) != nil {
+				return errors.New("browser session example requires a dedicated trusted HTTPS DNS management identity")
+			}
+		}
 		if !net.ParseIP(ip).IsLoopback() && (origin.Scheme != "https" || c.TLSCertFile == "" || c.TLSKeyFile == "") {
 			return errors.New("network server example requires TLS and certificate references")
 		}

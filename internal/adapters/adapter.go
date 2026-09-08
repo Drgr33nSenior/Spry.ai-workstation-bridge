@@ -302,11 +302,13 @@ type LiveOptions struct {
 	ModelBudgetBytes  int64
 }
 type Live struct {
-	opts   LiveOptions
-	stager *Stager
-	host   hostexec.Client
-	worker worker.Client
-	mu     sync.Mutex
+	opts      LiveOptions
+	stager    *Stager
+	host      hostexec.Client
+	worker    worker.Client
+	findModel func(string) (catalog.Model, error)
+	mu        sync.Mutex
+	active    map[string]bool
 }
 type dispatch struct {
 	Kind           string        `json:"kind"`
@@ -314,6 +316,17 @@ type dispatch struct {
 	Result         domain.Result `json:"result"`
 	Action         string        `json:"action"`
 	SourceRevision string        `json:"source_revision"`
+}
+
+func executionKind(action string) string {
+	switch action {
+	case "model.stage", "model.verify", "caches.configure":
+		return "local"
+	case "build.start":
+		return "worker"
+	default:
+		return "host"
+	}
 }
 
 func NewLive(o LiveOptions) (*Live, error) {
@@ -330,7 +343,7 @@ func NewLive(o LiveOptions) (*Live, error) {
 		return nil, e
 	}
 	s, _ := NewStager(o.ModelRoot, o.ModelBudgetBytes)
-	return &Live{opts: o, stager: s, host: hostexec.Client{Socket: o.HostSocket}, worker: worker.Client{Socket: o.WorkerSocket}}, nil
+	return &Live{opts: o, stager: s, host: hostexec.Client{Socket: o.HostSocket}, worker: worker.Client{Socket: o.WorkerSocket}, findModel: catalog.Find, active: map[string]bool{}}, nil
 }
 func (l *Live) Snapshot(ctx context.Context) (domain.Inventory, error) {
 	ref, e := catalog.Import(l.opts.ReferenceRoot)
@@ -403,13 +416,7 @@ func (l *Live) Execute(ctx context.Context, x domain.Execution, progress func(do
 	if expected := x.Plan.Preview.Preconditions["reference_revision"]; expected != "" && expected != ref.SourceRevision {
 		return domain.Result{State: "failed", Phase: "source-drift", Message: "reference source changed after planning; nothing was dispatched"}, domain.Fail("source_drift", "reference source changed after planning")
 	}
-	kind := "host"
-	switch x.Plan.Draft.Action {
-	case "model.stage", "model.verify", "caches.configure":
-		kind = "local"
-	case "build.start":
-		kind = "worker"
-	}
+	kind := executionKind(x.Plan.Draft.Action)
 	l.mu.Lock()
 	recordPath := filepath.Join(l.opts.StateDir, "live-dispatch", x.ID+".json")
 	if b, e := os.ReadFile(recordPath); e == nil {
@@ -424,13 +431,27 @@ func (l *Live) Execute(ctx context.Context, x domain.Execution, progress func(do
 		}
 		l.mu.Unlock()
 		return l.Inspect(ctx, x.ID)
+	} else if !os.IsNotExist(e) {
+		l.mu.Unlock()
+		return domain.Result{}, errors.New("adapter dispatch record cannot be read safely")
 	}
 	rec := dispatch{Kind: kind, Hash: domain.Hash(x), Action: x.Plan.Draft.Action, SourceRevision: x.Plan.Desired.Revision, Result: domain.Result{State: "running", Phase: "dispatch-intent", Message: "durable adapter intent recorded"}}
 	e = saveJSON(filepath.Dir(recordPath), filepath.Base(recordPath), rec)
+	if e == nil {
+		// The intent and active marker share the same mutex so a concurrent
+		// recovery probe cannot settle a just-dispatched local operation before
+		// this goroutine reaches the adapter.
+		l.active[x.ID] = true
+	}
 	l.mu.Unlock()
 	if e != nil {
 		return domain.Result{}, e
 	}
+	defer func() {
+		l.mu.Lock()
+		delete(l.active, x.ID)
+		l.mu.Unlock()
+	}()
 	var result domain.Result
 	switch kind {
 	case "worker":
@@ -477,7 +498,7 @@ func (l *Live) Execute(ctx context.Context, x domain.Execution, progress func(do
 				e = domain.Fail("unavailable", "managed model storage is unavailable")
 				break
 			}
-			m, fe := catalog.Find(x.Plan.Draft.Model)
+			m, fe := l.findModel(x.Plan.Draft.Model)
 			if fe != nil {
 				e = fe
 				break
@@ -598,6 +619,108 @@ func (l *Live) Inspect(ctx context.Context, id string) (domain.Result, error) {
 		return domain.Result{State: "recovery-required", Phase: "local-effect-uncertain", Message: "inspect managed partial/publication receipt and source; external effects are not retried", RecoveryRequired: true}, nil
 	}
 	return r.Result, nil
+}
+
+// InspectExecution binds recovery to the original durable execution. It never
+// accepts a caller-selected executor, model path or replacement plan.
+func (l *Live) InspectExecution(ctx context.Context, x domain.Execution) (domain.Result, error) {
+	if strings.ContainsAny(x.ID, "/\\.") || len(x.ID) < 8 {
+		return domain.Result{}, errors.New("invalid operation identity")
+	}
+	kind := executionKind(x.Plan.Draft.Action)
+	l.mu.Lock()
+	active := l.active[x.ID]
+	recordPath := filepath.Join(l.opts.StateDir, "live-dispatch", x.ID+".json")
+	b, e := os.ReadFile(recordPath)
+	l.mu.Unlock()
+	if active && kind == "local" {
+		return domain.Result{State: "running", Phase: "local-execution-active", Message: "local staging/verification is still active; no recovery probe was run"}, nil
+	}
+	if os.IsNotExist(e) {
+		if kind == "local" {
+			return l.inspectLocalExecution(ctx, x)
+		}
+		return domain.Result{}, errors.New("executor dispatch record is absent; outcome is not proven")
+	}
+	if e != nil {
+		return domain.Result{}, e
+	}
+	var r dispatch
+	if json.Unmarshal(b, &r) != nil {
+		return domain.Result{}, errors.New("adapter dispatch record corrupt")
+	}
+	if r.Hash == "" || r.Hash != domain.Hash(x) || r.Kind != kind {
+		return domain.Result{}, errors.New("adapter dispatch record does not bind the original execution")
+	}
+	// Action and source revision were added as defense-in-depth fields. Older
+	// records can omit them only because their immutable execution hash already
+	// binds the original persisted plan.
+	if r.Action != "" && r.Action != x.Plan.Draft.Action {
+		return domain.Result{}, errors.New("adapter dispatch action does not match the original execution")
+	}
+	if r.SourceRevision != "" && r.SourceRevision != x.Plan.Desired.Revision {
+		return domain.Result{}, errors.New("adapter dispatch source revision does not match the original execution")
+	}
+	switch kind {
+	case "local":
+		return l.inspectLocalExecution(ctx, x)
+	case "worker":
+		return l.worker.Status(ctx, x.ID)
+	default:
+		if r.Result.State == "failed" && r.Result.Phase == "executor-refused" {
+			return r.Result, nil
+		}
+		h, statusErr := l.host.Status(ctx, x.ID)
+		result := domain.Result{State: h.State, Phase: h.Phase, Message: h.Message, RecoveryRequired: h.State == "recovery-required"}
+		if statusErr == nil && x.Plan.Draft.Action == "cpu-policy.export" && h.State == "succeeded" {
+			result.Artifacts, statusErr = cpuArtifacts(h.Data, x.Plan.Desired.Revision)
+		}
+		return result, statusErr
+	}
+}
+
+func (l *Live) inspectLocalExecution(ctx context.Context, x domain.Execution) (domain.Result, error) {
+	if x.Plan.Draft.Action == "caches.configure" {
+		c, e := readConfig(l.opts.SourcePath)
+		if e == nil && c.Revision == x.Plan.Desired.Revision && c.Caches == x.Plan.Desired.Caches {
+			return domain.Result{State: "succeeded", Phase: "local-cache-budget-observed", Message: "durable managed cache budget matches the original local execution"}, nil
+		}
+		return domain.Result{State: "recovery-required", Phase: "local-source-inspection-required", Message: "cache budget source differs or is unavailable; no host or worker recovery was selected", RecoveryRequired: true}, nil
+	}
+	if x.Plan.Draft.Action != "model.stage" && x.Plan.Draft.Action != "model.verify" {
+		return domain.Result{}, errors.New("unsupported local recovery action")
+	}
+	if l.stager == nil {
+		return domain.Result{State: "recovery-required", Phase: "model-storage-unavailable", Message: "managed model storage is unavailable; local publication evidence cannot be inspected", RecoveryRequired: true}, nil
+	}
+	m, e := l.findModel(x.Plan.Draft.Model)
+	if e != nil {
+		return domain.Result{State: "recovery-required", Phase: "model-catalog-drift", Message: "the original selected model is no longer in the reviewed catalog", RecoveryRequired: true}, nil
+	}
+	if expected := x.Plan.Preview.Preconditions["reference_revision"]; expected != "" {
+		ref, importErr := catalog.Import(l.opts.ReferenceRoot)
+		if importErr != nil || ref.SourceRevision != expected {
+			return domain.Result{State: "recovery-required", Phase: "source-drift", Message: "reviewed reference source changed or is unavailable; local publication remains fenced", RecoveryRequired: true}, nil
+		}
+	}
+	artifacts, verifyErr := l.stager.Verify(ctx, m)
+	if verifyErr == nil {
+		return domain.Result{State: "succeeded", Phase: "local-publication-verified", Message: "verified staged model receipt, hashes and reader permissions", Artifacts: artifacts}, nil
+	}
+	// Recovery inspection is read-only. A restrictive legacy mode can be proved
+	// separately from content corruption, but only an explicit repeat model.stage
+	// repairs it through the bounded stager workflow.
+	if _, contentErr := l.stager.VerifyContent(ctx, m); contentErr == nil {
+		return domain.Result{State: "failed", Phase: "local-publication-permissions-invalid", Message: "published receipt and hashes verify, but reader permissions are invalid; explicitly rerun model.stage to repair this managed snapshot"}, nil
+	}
+	present, presentErr := l.stager.snapshotPresent(m)
+	if presentErr != nil {
+		return domain.Result{State: "recovery-required", Phase: "local-publication-unknown", Message: "managed model publication path cannot be inspected safely", RecoveryRequired: true}, nil
+	}
+	if !present {
+		return domain.Result{State: "failed", Phase: "local-interrupted-no-publication", Message: "no published model snapshot exists; the interrupted local operation did not dispatch host or worker effects"}, nil
+	}
+	return domain.Result{State: "recovery-required", Phase: "local-publication-uncertain", Message: "published model receipt, hashes or reader permissions are invalid; preserve the local recovery fence", RecoveryRequired: true}, nil
 }
 func (l *Live) Export(_ context.Context, h string) (domain.Bundle, error) {
 	c, e := readConfig(l.opts.SourcePath)

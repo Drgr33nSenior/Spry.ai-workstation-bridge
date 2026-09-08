@@ -69,13 +69,13 @@ func Bearer(s store.State, token string) (Actor, error) {
 	}
 	return Actor{}, domain.Fail("unauthorized", "invalid or expired credential")
 }
-func Session(s store.State, token string) (Actor, store.Session, error) {
+func Session(s store.State, token, purpose string) (Actor, store.Session, error) {
 	var empty store.Session
-	if len(token) != 43 {
+	if len(token) != 43 || purpose == "" {
 		return Actor{}, empty, domain.Fail("unauthorized", "browser session expired; sign in again")
 	}
 	session, ok := s.Sessions[Verifier(token)]
-	if !ok || time.Now().After(session.ExpiresAt) {
+	if !ok || session.Purpose != purpose || time.Now().After(session.ExpiresAt) {
 		return Actor{}, empty, domain.Fail("unauthorized", "browser session expired; sign in again")
 	}
 	c, ok := s.Credentials[session.CredentialID]
@@ -84,7 +84,11 @@ func Session(s store.State, token string) (Actor, store.Session, error) {
 	}
 	return Actor{c.ID, c.Name, c.Role}, session, nil
 }
-func Login(db *store.Store, credential string) (Actor, string, store.Session, error) {
+
+func Login(db *store.Store, credential, purpose string) (Actor, string, store.Session, error) {
+	if purpose == "" {
+		return Actor{}, "", store.Session{}, domain.Fail("unauthorized", "browser session policy is unavailable")
+	}
 	if _, err := Bearer(db.AuthState(), credential); err != nil {
 		return Actor{}, "", store.Session{}, err
 	}
@@ -105,7 +109,7 @@ func Login(db *store.Store, credential string) (Actor, string, store.Session, er
 		if c.ExpiresAt.Before(expires) {
 			expires = c.ExpiresAt
 		}
-		session = store.Session{Verifier: Verifier(token), CredentialID: a.ID, CSRF: Secret(), ExpiresAt: expires}
+		session = store.Session{Verifier: Verifier(token), CredentialID: a.ID, CSRF: Secret(), ExpiresAt: expires, Purpose: purpose}
 		s.Sessions[session.Verifier] = session
 		store.Event(s, a.ID, "login", a.ID, "succeeded")
 		return nil

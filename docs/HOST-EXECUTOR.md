@@ -69,12 +69,30 @@ mutation must be an explicit `profile.restore` identifying the unresolved helper
 operation. Restore also rechecks the saved target's current qualification and
 all legacy gates. It can refuse safely if the GPU remains occupied.
 
+Failed restore attempts retain `RecoveryID` links in this root journal. The helper
+admits a retry only when every unresolved helper record belongs to that validated
+chain and target. Missing/cyclic links remain fenced; API records cannot supply
+the missing authority. Successful C is durable before A/B settlement. If a parent
+write fails, admission remains poisoned and startup finishes only the proven
+journal settlement, without rerunning C. Status and duplicate submissions expose
+`recovery-settlement-pending` until the helper can establish durable settlement;
+the API must not use the retained internal success proof to clear its fence early.
+Startup also acquires the canonical lock for pending settlement; contention
+refuses startup. Older successful restores cannot settle later or unordered
+uncertain attempts. The lock is held through settlement.
+Original failures remain failed history. See [recovery commands](REMEDIATION.md#recovery-and-baseline-session-restoration).
+
 Every journal replacement syncs the file, renames it and syncs the parent.
 Installer state writes now use Linux `sync -f` before and after replacement.
 Storage failure fences new mutations. The journal has a configured record cap;
 archive records only during owner-reviewed stopped-service maintenance. Back up
 the helper journal, legacy state, root policy and runtime manifest together.
 The API store is a separate backup and cannot replace privileged recovery data.
+
+Interrupted read-only hardware refresh and CPU-policy exports become failed
+diagnostic operations at restart, not GPU recovery fences. Their incomplete
+outputs are not reported successful. Mutating operations retain the conservative
+unknown-effect behavior above.
 
 ## Serving qualification
 

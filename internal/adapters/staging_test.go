@@ -12,8 +12,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -60,8 +63,8 @@ func TestStageVerifyAtomicAndCorrupt(t *testing.T) {
 	if e != nil || fileInfo.Mode().Perm() != 0640 {
 		t.Fatal("published reader mode", fileInfo, e)
 	}
-	if _, e = s.Stage(context.Background(), m, nil); e == nil {
-		t.Fatal("overwrote ready revision")
+	if repaired, repairErr := s.Stage(context.Background(), m, nil); repairErr != nil || len(repaired) != 1 {
+		t.Fatal("repeat stage did not use bounded verified repair", repaired, repairErr)
 	}
 	prefix, _ := modelPrefix(m)
 	if e = os.WriteFile(filepath.Join(s.root, prefix, "weights.safetensors"), []byte("corrupt"), 0600); e != nil {
@@ -113,6 +116,205 @@ func TestCancellationRetainsPartialWithoutReady(t *testing.T) {
 	usage := CacheUsage("models", s.root, 1<<30)
 	if len(usage.CleanupPreview) != 1 || usage.UsedBytes == 0 {
 		t.Fatal(usage)
+	}
+}
+
+func TestPublicationFailureRetainsVerifiedPrivateSnapshot(t *testing.T) {
+	s, m := fixtureStager(t, []byte("fixture"))
+	s.rename = func(*os.Root, string, string) error { return errors.New("injected atomic publication failure") }
+	if _, err := s.Stage(context.Background(), m, nil); err == nil {
+		t.Fatal("published despite injected rename failure")
+	}
+	prefix, _ := modelPrefix(m)
+	if _, err := os.Lstat(filepath.Join(s.root, prefix)); err == nil {
+		t.Fatal("published revision exists after failed rename")
+	}
+	assertPrivatePartial(t, s.root)
+	entries, err := os.ReadDir(s.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".partial-") {
+			if _, err = os.Lstat(filepath.Join(s.root, entry.Name(), "snapshot", ".bridge-receipt.json")); err != nil {
+				t.Fatalf("verified receipt was not retained below private partial: %v", err)
+			}
+			return
+		}
+	}
+	t.Fatal("missing partial snapshot")
+}
+
+// The bridge service uses UMask=0077. Run these cases in children so changing
+// the process-wide umask cannot race unrelated package tests.
+func TestStagingPublishedPermissionsUnderServiceUmask(t *testing.T) {
+	for _, testUmask := range []string{"0022", "0077"} {
+		t.Run(testUmask, func(t *testing.T) {
+			command := exec.Command(os.Args[0], "-test.run=^TestStagingPublishedPermissionsUnderServiceUmaskHelper$")
+			command.Env = append(os.Environ(), "BRIDGE_STAGING_TEST_UMASK="+testUmask)
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("subprocess umask %s: %v\n%s", testUmask, err, output)
+			}
+		})
+	}
+}
+
+func TestStagingPublishedPermissionsUnderServiceUmaskHelper(t *testing.T) {
+	raw := os.Getenv("BRIDGE_STAGING_TEST_UMASK")
+	if raw == "" {
+		return
+	}
+	value, err := strconv.ParseInt(raw, 8, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	syscall.Umask(int(value))
+
+	body := []byte("nested fixture model")
+	s, m := fixtureStager(t, body)
+	digest := sha256.Sum256(body)
+	m.Files = []catalog.File{
+		{Path: "nested/one/weights.safetensors", Size: int64(len(body)), Algorithm: "sha256", Digest: hex.EncodeToString(digest[:])},
+		{Path: "tokenizer.json", Size: int64(len(body)), Algorithm: "sha256", Digest: hex.EncodeToString(digest[:])},
+	}
+	// A previous service version can have created the model-ID parent under the
+	// restrictive service umask. Staging must repair this one canonical parent.
+	if err = os.Mkdir(filepath.Join(s.root, m.ID), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(filepath.Join(s.root, m.ID), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Stage(context.Background(), m, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertPublishedModes(t, s.root, m)
+	if _, err = s.Verify(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+
+	// A failed transfer retains data below an owner-only .partial-* parent even
+	// though successful snapshots are group-readable after publication.
+	partial := m
+	partial.Revision = strings.Repeat("b", 40)
+	if _, err = s.Stage(context.Background(), partial, func(string, int64) error { return context.Canceled }); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	assertPrivatePartial(t, s.root)
+
+	// A conflict after download/receipt generation cannot publish a partial
+	// snapshot. The test creates only the exact model-ID path during the staged
+	// progress callback; it does not use an arbitrary target path.
+	conflict := m
+	conflict.ID = "conflict-model"
+	conflict.Revision = strings.Repeat("c", 40)
+	created := false
+	if _, err = s.Stage(context.Background(), conflict, func(string, int64) error {
+		if created {
+			return nil
+		}
+		created = true
+		return os.WriteFile(filepath.Join(s.root, conflict.ID), []byte("block publication"), 0600)
+	}); err == nil {
+		t.Fatal("published despite final model-ID conflict")
+	}
+	prefix, _ := modelPrefix(conflict)
+	if _, err = os.Lstat(filepath.Join(s.root, prefix)); err == nil {
+		t.Fatal("conflicting model revision published")
+	}
+	assertPrivatePartial(t, s.root)
+
+	// Repair is deliberately bounded to the verified model-ID/revision snapshot.
+	// It repairs the exact manifest tree and receipt, then a repeat stage remains
+	// a refusal rather than an overwrite.
+	published, _ := modelPrefix(m)
+	for _, rel := range []string{"", "nested", "nested/one"} {
+		if err = os.Chmod(filepath.Join(s.root, published, rel), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = os.Chmod(filepath.Join(s.root, m.ID), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{"nested/one/weights.safetensors", "tokenizer.json", ".bridge-receipt.json"} {
+		if err = os.Chmod(filepath.Join(s.root, published, rel), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = s.Verify(context.Background(), m); err == nil {
+		t.Fatal("verified unreadable published snapshot")
+	}
+	if _, err = s.RepairPublishedPermissions(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+	assertPublishedModes(t, s.root, m)
+	if repaired, repairErr := s.Stage(context.Background(), m, nil); repairErr != nil || len(repaired) != len(m.Files) {
+		t.Fatal("repeat staging did not use bounded verified repair", repaired, repairErr)
+	}
+	if err = os.WriteFile(filepath.Join(s.root, published, ".bridge-receipt.json"), []byte("not a receipt"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.RepairPublishedPermissions(context.Background(), m); err == nil {
+		t.Fatal("repaired a snapshot without a verified receipt")
+	}
+}
+
+func assertPublishedModes(t *testing.T, root string, m catalog.Model) {
+	t.Helper()
+	prefix, err := modelPrefix(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootInfo, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootOwner, ok := rootInfo.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("cannot inspect model root group")
+	}
+	for _, rel := range []string{m.ID, prefix, prefix + "/nested", prefix + "/nested/one"} {
+		info, err := os.Lstat(filepath.Join(root, rel))
+		if err != nil || !info.IsDir() || info.Mode().Perm() != 0750 || info.Mode()&os.ModeSetgid == 0 {
+			t.Fatalf("published directory %s has mode %v: %v", rel, info, err)
+		}
+		owner, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || owner.Gid != rootOwner.Gid {
+			t.Fatalf("published directory %s lost the reviewed reader group", rel)
+		}
+	}
+	for _, rel := range []string{prefix + "/nested/one/weights.safetensors", prefix + "/tokenizer.json", prefix + "/.bridge-receipt.json"} {
+		info, err := os.Lstat(filepath.Join(root, rel))
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0640 {
+			t.Fatalf("published file %s has mode %v: %v", rel, info, err)
+		}
+		owner, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || owner.Gid != rootOwner.Gid {
+			t.Fatalf("published file %s lost the reviewed reader group", rel)
+		}
+	}
+}
+
+func assertPrivatePartial(t *testing.T, root string) {
+	t.Helper()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), ".partial-") {
+			continue
+		}
+		found = true
+		info, err := entry.Info()
+		if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
+			t.Fatalf("partial %s is not owner-only: %v %v", entry.Name(), info, err)
+		}
+	}
+	if !found {
+		t.Fatal("expected retained private partial")
 	}
 }
 func TestDownloadDestinationAndCredentials(t *testing.T) {

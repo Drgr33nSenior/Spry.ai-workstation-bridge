@@ -7,9 +7,9 @@
         "type": "http"
       },
       "browserSession": {
-        "description": "Short-lived HttpOnly SameSite=Strict session with Origin and CSRF checks on mutations",
+        "description": "Live browser sessions require explicit browser_sessions policy and a dedicated trusted HTTPS hostname. Secure, HttpOnly, host-only, Path=/, SameSite=Strict with Origin and CSRF checks. Cookies are not port-isolated. Demo uses bridge_demo_session_v2; CLI-only live listeners refuse browser login.",
         "in": "cookie",
-        "name": "bridge_session",
+        "name": "__Host-bridge_session_v2",
         "type": "apiKey"
       }
     }
@@ -4211,7 +4211,7 @@
             "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
           }
         },
-        "summary": "Inspect executor and create an explicit restore plan",
+        "summary": "Inspect the responsible executor and plan chain restoration or operation reconciliation",
         "x-minimum-role": "owner"
       }
     },

@@ -25,6 +25,14 @@ import (
 
 type peerKey struct{}
 
+type osCgroupFiles struct{}
+
+func (osCgroupFiles) ReadFile(name string) ([]byte, error) { return os.ReadFile(name) }
+func (osCgroupFiles) WriteFile(name string, data []byte, mode os.FileMode) error {
+	return os.WriteFile(name, data, mode)
+}
+func (osCgroupFiles) Mkdir(name string, mode os.FileMode) error { return os.Mkdir(name, mode) }
+
 func ConnContext(ctx context.Context, c net.Conn) context.Context {
 	u, ok := c.(*net.UnixConn)
 	if !ok {
@@ -139,14 +147,9 @@ func runContained(ctx context.Context, p Policy, r Request) (domain.Result, erro
 	if e := os.Mkdir(job, 0700); e != nil {
 		return result, e
 	}
-	group := filepath.Join(p.CgroupRoot, "bridge-"+r.ID)
-	if e := os.Mkdir(group, 0700); e != nil {
-		return result, errors.New("delegated cgroup v2 unavailable")
-	}
-	for file, value := range map[string]string{"memory.max": strconv.FormatInt(p.MemoryMiB<<20, 10), "memory.swap.max": "0", "pids.max": "256", "cpu.max": fmt.Sprintf("%d 100000", p.Jobs*100000)} {
-		if e := os.WriteFile(filepath.Join(group, file), []byte(value), 0600); e != nil {
-			return result, errors.New("worker cgroup resource limit unavailable")
-		}
+	group, e := prepareJobCgroup(p, r)
+	if e != nil {
+		return result, e
 	}
 	g, e := os.Open(group)
 	if e != nil {
@@ -221,14 +224,16 @@ func runContained(ctx context.Context, p Policy, r Request) (domain.Result, erro
 		cmd.WaitDelay = 3 * time.Second
 		if e = cmd.Run(); e != nil {
 			kill()
-			if !groupEmpty(group) {
+			empty, checkErr := groupEmpty(group)
+			if checkErr != nil || !empty {
 				return domain.Result{State: "recovery-required", Phase: "descendant-check", Message: "build cancellation could not prove every descendant stopped", RecoveryRequired: true}, nil
 			}
 			return result, errors.New("contained compiler failed; inspect bounded worker build log locally")
 		}
 	}
 	kill()
-	if !groupEmpty(group) {
+	empty, checkErr := groupEmpty(group)
+	if checkErr != nil || !empty {
 		return domain.Result{State: "recovery-required", Phase: "descendant-check", Message: "worker descendants cannot be proved stopped", RecoveryRequired: true}, nil
 	}
 	outputs := []string{"build/bin/llama-cli", "build/bin/llama-bench"}
@@ -291,24 +296,63 @@ func runContained(ctx context.Context, p Policy, r Request) (domain.Result, erro
 	result.Artifacts = append(result.Artifacts, domain.Artifact{Name: "provenance.json", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(data)), SourceRevision: p.SourceRevision, Qualification: "built-not-installed-not-qualified"})
 	return result, nil
 }
-func groupEmpty(group string) bool {
+func prepareJobCgroup(p Policy, r Request) (string, error) {
+	root := filepath.Clean(p.CgroupRoot)
+	info, err := os.Lstat(root)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("worker delegated cgroup root is unavailable")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != p.WorkerUID {
+		return "", errors.New("worker delegated cgroup root is not owned by the configured worker")
+	}
+	files := osCgroupFiles{}
+	if err := initializeDelegatedCgroup(files, root, os.Getpid()); err != nil {
+		return "", err
+	}
+	group, err := createLimitedJobCgroup(files, root, r.ID, p.MemoryMiB, p.Jobs)
+	if err != nil {
+		return "", err
+	}
+	return group, nil
+}
+
+func groupEmpty(group string) (bool, error) {
 	for i := 0; i < 30; i++ {
 		events, e := os.ReadFile(filepath.Join(group, "cgroup.events"))
 		if e != nil {
-			return false
+			return false, e
 		}
-		if strings.Contains(string(events), "populated 0") {
-			return true
+		for _, line := range strings.Split(string(events), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 2 && fields[0] == "populated" {
+				if fields[1] == "0" {
+					return true, nil
+				}
+				if fields[1] == "1" {
+					break
+				}
+			}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return false
+	return false, nil
 }
 func restartDisposition(p Policy, id string) domain.Result {
 	group := filepath.Join(p.CgroupRoot, "bridge-"+id)
-	_, e := os.Stat(group)
-	if os.IsNotExist(e) || e == nil && groupEmpty(group) {
-		return domain.Result{State: "failed", Phase: "worker-restart", Message: "prior build outcome was not committed; its cgroup is absent or empty and artifacts remain unqualified"}
+	info, e := os.Lstat(group)
+	if os.IsNotExist(e) {
+		return domain.Result{State: "recovery-required", Phase: "worker-restart", Message: "prior build cgroup is absent; descendant termination cannot be proved", RecoveryRequired: true}
+	}
+	if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return domain.Result{State: "recovery-required", Phase: "worker-restart", Message: "prior build cgroup cannot be inspected; descendant termination cannot be proved", RecoveryRequired: true}
+	}
+	empty, e := groupEmpty(group)
+	if e != nil {
+		return domain.Result{State: "recovery-required", Phase: "worker-restart", Message: "prior build cgroup state is unreadable; descendant termination cannot be proved", RecoveryRequired: true}
+	}
+	if empty {
+		return domain.Result{State: "failed", Phase: "worker-restart", Message: "prior build outcome was not committed; its empty cgroup proves descendants stopped and artifacts remain unqualified"}
 	}
 	return domain.Result{State: "recovery-required", Phase: "worker-restart", Message: "prior build descendants cannot be proved stopped; inspect delegated cgroup", RecoveryRequired: true}
 }

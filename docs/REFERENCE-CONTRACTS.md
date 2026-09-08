@@ -190,10 +190,18 @@ The worker's private process view is deliberate; the root GPU helper retains
 the complete host view. Cancellation kills the job cgroup and verifies that no
 descendant remains before reporting cancellation. Uncertain outcomes remain
 recovery-required. On worker restart, pending records are not retried. If the
-recorded cgroup is absent or empty, the uncommitted build becomes failed; its
-artifacts remain unqualified. Otherwise, new builds remain blocked until a
+recorded cgroup is readable and explicitly reports `populated 0`, the uncommitted
+build becomes failed; its artifacts remain unqualified. A missing, unreadable,
+malformed or populated cgroup is not termination evidence. New builds remain blocked until a
 status check proves that no descendants remain. A persistence failure keeps a
 separate fence until the worker restarts with readable durable records.
+
+Before creating a job, the worker validates its own delegated cgroup v2 parent,
+requires itself in the `supervisor` subgroup and no processes in the parent,
+enables available cpu/memory/pids controllers, then reads back enablement and
+child CPU/RAM/no-swap/PID limits. Any failure refuses launch. No ancestor is
+modified. The [disposable kernel test](REMEDIATION.md#disposable-linux-cgroup-qualification)
+is opt-in; filesystem fixtures do not establish kernel enforcement.
 
 Successful jobs retain outputs, a bounded local `build.log`, CMake output where
 applicable, and `provenance.json` with source/toolchain hashes, effective budgets,

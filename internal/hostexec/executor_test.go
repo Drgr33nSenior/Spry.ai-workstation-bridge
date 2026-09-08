@@ -29,6 +29,35 @@ func fixtureRequest(id string) Request {
 	r.PayloadHash = RequestHash(r)
 	return r
 }
+
+func fixtureRecoveryRequest(t *testing.T, e *Executor, id, action, recoveryID string) Request {
+	t.Helper()
+	configuration := domain.Configuration{}
+	configuration.Revision = configuration.ContentRevision()
+	if err := durableJSON(e.policy.SourcePath, configuration); err != nil {
+		t.Fatal(err)
+	}
+	r := Request{Version: ContractVersion, ID: id, ExecutionIdentity: "test-owner", Draft: domain.Draft{Action: action, Target: "fixture-node", RecoveryID: recoveryID, SourceRevision: configuration.Revision}, Desired: configuration}
+	if action == "profile.switch" {
+		r.Draft.Profile = "gaming"
+	}
+	r.PayloadHash = RequestHash(r)
+	return r
+}
+
+func TestRecoveryCannotChangeRootJournalTarget(t *testing.T) {
+	e := fixtureExecutor(t)
+	original := fixtureRecoveryRequest(t, e, "operation-old-target", "profile.switch", "")
+	original.Draft.Target = "previous-workstation"
+	original.PayloadHash = RequestHash(original)
+	if err := e.save(record{Request: original, Result: Result{ID: original.ID, State: "recovery-required"}}); err != nil {
+		t.Fatal(err)
+	}
+	retry := fixtureRecoveryRequest(t, e, "operation-new-target", "profile.restore", original.ID)
+	if _, err := e.Submit(e.policy.AllowedUID, retry); err == nil {
+		t.Fatal("root helper restored an old journal onto a new policy target")
+	}
+}
 func awaitResult(t *testing.T, e *Executor, id string) Result {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -154,6 +183,299 @@ func TestRestartDoesNotRetryAndFencesRecovery(t *testing.T) {
 	got, _ = e.Status(r.ID)
 	if got.State != "recovery-required" {
 		t.Fatal("API record authorized privileged work")
+	}
+}
+
+func TestRecoveryAttemptsSettleOneDurableHelperChain(t *testing.T) {
+	e := fixtureExecutor(t)
+	var executions atomic.Int32
+	e.run = func(context.Context, Request, *os.File) (json.RawMessage, error) {
+		if executions.Add(1) < 3 {
+			return nil, errors.New("fixture dispatched effect is uncertain")
+		}
+		return nil, nil
+	}
+	a := fixtureRecoveryRequest(t, e, "recovery-a-0001", "profile.switch", "")
+	if _, err := e.Submit(2345, a); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitResult(t, e, a.ID); got.State != "recovery-required" {
+		t.Fatal(got)
+	}
+	b := fixtureRecoveryRequest(t, e, "recovery-b-0001", "profile.restore", a.ID)
+	if _, err := e.Submit(2345, b); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitResult(t, e, b.ID); got.State != "recovery-required" {
+		t.Fatal(got)
+	}
+	c := fixtureRecoveryRequest(t, e, "recovery-c-0001", "profile.restore", b.ID)
+	if _, err := e.Submit(2345, c); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitResult(t, e, c.ID); got.State != "succeeded" {
+		t.Fatal(got)
+	}
+	for _, id := range []string{a.ID, b.ID} {
+		if got, err := e.Status(id); err != nil || got.State != "failed" || !strings.Contains(got.Phase, "recovered-by-"+c.ID) {
+			t.Fatalf("%s not durably settled by recovery chain: %+v %v", id, got, err)
+		}
+	}
+	if _, err := e.Submit(2345, c); err != nil || executions.Load() != 3 {
+		t.Fatalf("recovery retry was not idempotent: executions=%d err=%v", executions.Load(), err)
+	}
+	after := fixtureRequest("operation-after-chain")
+	if _, err := e.Submit(2345, after); err != nil {
+		t.Fatalf("settled recovery chain still fenced unrelated operations: %v", err)
+	}
+	if got := awaitResult(t, e, after.ID); got.State != "succeeded" {
+		t.Fatal(got)
+	}
+}
+
+func TestRecoverySettlementRollsForwardAfterParentPersistenceFault(t *testing.T) {
+	e := fixtureExecutor(t)
+	var executions atomic.Int32
+	e.run = func(context.Context, Request, *os.File) (json.RawMessage, error) {
+		if executions.Add(1) < 3 {
+			return nil, errors.New("fixture dispatched effect is uncertain")
+		}
+		return nil, nil
+	}
+	a := fixtureRecoveryRequest(t, e, "recovery-fault-a", "profile.switch", "")
+	b := fixtureRecoveryRequest(t, e, "recovery-fault-b", "profile.restore", a.ID)
+	for _, request := range []Request{a, b} {
+		if _, err := e.Submit(2345, request); err != nil {
+			t.Fatal(err)
+		}
+		if got := awaitResult(t, e, request.ID); got.State != "recovery-required" {
+			t.Fatal(got)
+		}
+	}
+	var armFault atomic.Bool
+	var failOnce atomic.Bool
+	e.persist = func(path string, value any) error {
+		if armFault.Load() && filepath.Base(path) == a.ID+".json" && !failOnce.Swap(true) {
+			return errors.New("fixture parent journal write failure")
+		}
+		return durableJSON(path, value)
+	}
+	armFault.Store(true)
+	c := fixtureRecoveryRequest(t, e, "recovery-fault-c", "profile.restore", b.ID)
+	if _, err := e.Submit(2345, c); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitResult(t, e, c.ID); got.State != "recovery-required" || got.Phase != "recovery-settlement-pending" {
+		t.Fatalf("partially settled restore was reported successful: %+v", got)
+	}
+	if durable := e.records[c.ID].Result; durable.State != "succeeded" {
+		t.Fatalf("successful recovery proof was lost: %+v", durable)
+	}
+	if got, err := e.Submit(2345, c); err != nil || got.State != "recovery-required" || got.Phase != "recovery-settlement-pending" {
+		t.Fatalf("duplicate did not report settlement pending: %+v %v", got, err)
+	}
+	if !e.journalFailed {
+		t.Fatal("failed parent recovery settlement did not fence the helper")
+	}
+
+	// This simulates a process restart after C was durable but before every
+	// parent was settled. The replay writes journals only; it never calls run.
+	reopened := fixtureExecutor(t)
+	reopened.policy = e.policy
+	reopened.persist = durableJSON
+	if err := reopened.load(); err != nil {
+		t.Fatal(err)
+	}
+	if executions.Load() != 3 {
+		t.Fatal("recovery settlement re-dispatched an external effect")
+	}
+	for _, id := range []string{a.ID, b.ID} {
+		if got, err := reopened.Status(id); err != nil || got.State != "failed" || got.Phase != "recovered-by-"+c.ID {
+			t.Fatalf("restart did not roll forward %s: %+v %v", id, got, err)
+		}
+	}
+	if got, err := reopened.Status(c.ID); err != nil || got.State != "succeeded" {
+		t.Fatalf("settled restore did not become visible after restart: %+v %v", got, err)
+	}
+}
+
+func TestRestartSettlementHoldsCanonicalLockAndFailsOnContention(t *testing.T) {
+	e := fixtureExecutor(t)
+	base := time.Now().UTC()
+	a := fixtureRecoveryRequest(t, e, "recovery-lock-a", "profile.switch", "")
+	c := fixtureRecoveryRequest(t, e, "recovery-lock-c", "profile.restore", a.ID)
+	for _, entry := range []struct {
+		request Request
+		result  Result
+		started time.Time
+	}{
+		{a, Result{ID: a.ID, State: "recovery-required"}, base.Add(-time.Minute)},
+		{c, Result{ID: c.ID, State: "succeeded"}, base},
+	} {
+		if err := e.save(record{Request: entry.request, PeerUID: 2345, Result: entry.result, StartedAt: entry.started}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	held, err := lockFile(filepath.Join(e.policy.SessionDir, "lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.records = map[string]record{}
+	if err := e.load(); err == nil || !e.journalFailed {
+		t.Fatal("restart settlement ignored a competing canonical legacy lock")
+	}
+	if got, _ := e.Status(a.ID); got.State != "recovery-required" {
+		t.Fatal("lock contention settled the original recovery")
+	}
+	if err := held.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened := fixtureExecutor(t)
+	reopened.policy = e.policy
+	reopened.lock = func() (*os.File, error) { return lockFile(filepath.Join(reopened.policy.SessionDir, "lock")) }
+	reopened.persist = func(path string, value any) error {
+		if lock, err := lockFile(filepath.Join(reopened.policy.SessionDir, "lock")); err == nil {
+			lock.Close()
+			t.Fatal("restart settlement wrote journals without the canonical legacy lock")
+		}
+		return durableJSON(path, value)
+	}
+	if err := reopened.load(); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := reopened.Status(a.ID); got.State != "failed" {
+		t.Fatal("restart settlement did not finish after lock release")
+	}
+}
+
+func TestRestartReadOnlyRecordsFailWithoutRecoveryFence(t *testing.T) {
+	for _, action := range []string{"hardware.refresh", "cpu-policy.export"} {
+		t.Run(action, func(t *testing.T) {
+			e := fixtureExecutor(t)
+			r := fixtureRequest("readonly-restart-" + strings.ReplaceAll(action, ".", "-"))
+			r.Draft.Action = action
+			r.PayloadHash = RequestHash(r)
+			if err := e.save(record{Request: r, PeerUID: 2345, Result: Result{ID: r.ID, State: "running", Phase: "collecting"}, StartedAt: time.Now().UTC()}); err != nil {
+				t.Fatal(err)
+			}
+			e.records = map[string]record{}
+			if err := e.load(); err != nil {
+				t.Fatal(err)
+			}
+			got, err := e.Status(r.ID)
+			if err != nil || got.State != "failed" || got.Phase != "read-only-interrupted" {
+				t.Fatalf("unfinished read-only operation became a recovery fence: %+v %v", got, err)
+			}
+			next := fixtureRequest("readonly-after-restart")
+			if _, err := e.Submit(2345, next); err != nil {
+				t.Fatalf("read-only interruption fenced the next bounded diagnostic: %v", err)
+			}
+			if got := awaitResult(t, e, next.ID); got.State != "succeeded" {
+				t.Fatal(got)
+			}
+		})
+	}
+}
+
+func TestRecoveryChainRejectsUnrelatedOrPreflightRecords(t *testing.T) {
+	e := fixtureExecutor(t)
+	a := fixtureRecoveryRequest(t, e, "recovery-other-a", "profile.switch", "")
+	if err := e.save(record{Request: a, PeerUID: 2345, Result: Result{ID: a.ID, State: "recovery-required"}}); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := fixtureRecoveryRequest(t, e, "recovery-other-b", "profile.switch", "")
+	if err := e.save(record{Request: unrelated, PeerUID: 2345, Result: Result{ID: unrelated.ID, State: "recovery-required"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Submit(2345, fixtureRecoveryRequest(t, e, "recovery-other-c", "profile.restore", a.ID)); err == nil {
+		t.Fatal("restore accepted while an unrelated root helper fence remained")
+	}
+
+	preflight := fixtureExecutor(t)
+	preflight.run = func(context.Context, Request, *os.File) (json.RawMessage, error) {
+		return nil, preflightFailure{errors.New("fixture preflight refusal")}
+	}
+	r := fixtureRecoveryRequest(t, preflight, "preflight-0001", "profile.switch", "")
+	if _, err := preflight.Submit(2345, r); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitResult(t, preflight, r.ID); got.State != "failed" || got.Phase != "preflight-refused" {
+		t.Fatalf("preflight refusal became uncertain recovery: %+v", got)
+	}
+}
+
+func TestRecoveryChainAllowsRetryFromOriginalRootAndRejectsCycles(t *testing.T) {
+	e := fixtureExecutor(t)
+	var executions atomic.Int32
+	e.run = func(context.Context, Request, *os.File) (json.RawMessage, error) {
+		if executions.Add(1) < 3 {
+			return nil, errors.New("fixture dispatched effect is uncertain")
+		}
+		return nil, nil
+	}
+	a := fixtureRecoveryRequest(t, e, "recovery-root-a", "profile.switch", "")
+	b := fixtureRecoveryRequest(t, e, "recovery-root-b", "profile.restore", a.ID)
+	for _, request := range []Request{a, b} {
+		if _, err := e.Submit(2345, request); err != nil {
+			t.Fatal(err)
+		}
+		if got := awaitResult(t, e, request.ID); got.State != "recovery-required" {
+			t.Fatal(got)
+		}
+	}
+	// A retry may name the original failed operation or the latest failed
+	// attempt. Both identify the same root-owned recovery chain.
+	c := fixtureRecoveryRequest(t, e, "recovery-root-c", "profile.restore", a.ID)
+	if _, err := e.Submit(2345, c); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitResult(t, e, c.ID); got.State != "succeeded" {
+		t.Fatal(got)
+	}
+
+	cycle := fixtureExecutor(t)
+	first := fixtureRecoveryRequest(t, cycle, "recovery-cycle-a", "profile.restore", "recovery-cycle-b")
+	second := fixtureRecoveryRequest(t, cycle, "recovery-cycle-b", "profile.restore", first.ID)
+	for _, request := range []Request{first, second} {
+		if err := cycle.save(record{Request: request, PeerUID: 2345, Result: Result{ID: request.ID, State: "recovery-required"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := cycle.Submit(2345, fixtureRecoveryRequest(t, cycle, "recovery-cycle-c", "profile.restore", first.ID)); err == nil {
+		t.Fatal("cyclic root helper recovery links were accepted")
+	}
+}
+
+func TestRecoverySettlementRetainsLaterUnresolvedAttempt(t *testing.T) {
+	e := fixtureExecutor(t)
+	base := time.Now().UTC()
+	a := fixtureRecoveryRequest(t, e, "recovery-order-a", "profile.switch", "")
+	c := fixtureRecoveryRequest(t, e, "recovery-order-c", "profile.restore", a.ID)
+	later := fixtureRecoveryRequest(t, e, "recovery-order-d", "profile.restore", a.ID)
+	for _, entry := range []struct {
+		request Request
+		result  Result
+		started time.Time
+	}{
+		{a, Result{ID: a.ID, State: "recovery-required"}, base.Add(-2 * time.Minute)},
+		{c, Result{ID: c.ID, State: "succeeded"}, base.Add(-time.Minute)},
+		{later, Result{ID: later.ID, State: "recovery-required"}, base},
+	} {
+		if err := e.save(record{Request: entry.request, PeerUID: 2345, Result: entry.result, StartedAt: entry.started}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := e.settleRecoveryChain(c.ID); err == nil {
+		t.Fatal("older successful restore settled a later unresolved attempt")
+	}
+	for _, id := range []string{a.ID, later.ID} {
+		if got, err := e.Status(id); err != nil || got.State != "recovery-required" {
+			t.Fatalf("later-attempt fence was cleared for %s: %+v %v", id, got, err)
+		}
+	}
+	if !e.journalFailed {
+		t.Fatal("ambiguous recovery ordering did not fence the helper")
 	}
 }
 

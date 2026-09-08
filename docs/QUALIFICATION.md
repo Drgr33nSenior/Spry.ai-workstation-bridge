@@ -3,6 +3,10 @@
 **NOT RUN — target hardware unavailable.** This is the owner qualification path,
 not a claim about the development Mac or the expected Threadripper workstation.
 Use the exact installed adapter contract v1 and reviewed non-production target.
+The [remediation qualification and migration guide](REMEDIATION.md) adds the
+restrictive-umask reader test, failed-restore-chain recovery, dedicated HTTPS
+browser boundary and authorized disposable cgroup probe. Complete those checks
+before relying on these boundaries on the target.
 Do not execute destructive installer/boot/firmware commands as part of these
 checks. A failed check is a refusal to proceed, not permission to bypass it.
 

@@ -29,11 +29,28 @@ func TestWorkerRestartRecoveryFencesAreIndependent(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 	var result domain.Result
+	if e := json.Unmarshal(w.Body.Bytes(), &result); e != nil || result.State != "recovery-required" || !result.RecoveryRequired {
+		t.Fatal("absent cgroup must retain the recovery fence", result, e)
+	}
+	if !s.recovery["recovery-first"] || !s.recovery["recovery-second"] || !s.persistenceFailed {
+		t.Fatal("missing cgroup cleared a worker recovery or persistence fence")
+	}
+	group := filepath.Join(p.CgroupRoot, "bridge-recovery-first")
+	if e := os.Mkdir(group, 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(filepath.Join(group, "cgroup.events"), []byte("populated 0\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	r = httptest.NewRequest("GET", "http://worker/operations/recovery-first", nil)
+	r = r.WithContext(context.WithValue(r.Context(), peerKey{}, p.APIUID))
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
 	if e := json.Unmarshal(w.Body.Bytes(), &result); e != nil || result.State != "failed" || result.RecoveryRequired {
-		t.Fatal("absent cgroup must resolve to uncommitted failure, not success", result, e)
+		t.Fatal("an empty observable cgroup must settle only this uncommitted build as failed", result, e)
 	}
 	if s.recovery["recovery-first"] || !s.recovery["recovery-second"] || !s.persistenceFailed {
-		t.Fatal("resolving one job cleared another job or persistence fence")
+		t.Fatal("empty cgroup resolution cleared another worker recovery or persistence fence")
 	}
 	request := Request{ID: "new-operation", Actor: "owner", Recipe: "llama-vulkan"}
 	request.Hash = RequestHash(request)

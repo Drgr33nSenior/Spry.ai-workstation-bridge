@@ -88,7 +88,12 @@ process. The controller is unprivileged and refuses live startup as root.
 
 ## Private HTTPS and VPN access
 
-Default HTTP binds only loopback. A network listener requires explicit HTTPS,
+Live HTTP binds only loopback and is CLI-only (`browser_sessions: false`).
+Browser management requires `browser_sessions: true`, a dedicated trusted HTTPS
+hostname and a valid certificate, including for a loopback listener. All services
+at that hostname share the cookie trust boundary; ports do not isolate cookies.
+See [session migration](REMEDIATION.md#private-browser-migration).
+A network listener requires explicit HTTPS,
 an exact management origin and a certificate whose SAN identifies its hostname.
 `deployment/server.vpn.example.json` uses the reserved documentation address
 `192.0.2.10`; replace it with the already reviewed private interface or VPN
@@ -170,7 +175,9 @@ under the owner's established secret-backup controls; do not export them through
 Bridge. Verify backup readability and permissions in an isolated directory.
 
 Check the new schema and adapter contract versions before replacing binaries.
-Version 1 currently has no migration step; unknown store/helper versions refuse
+Version 1 retains recovery links without journal migration; old browser sessions
+are invalidated by the new generation binding. Follow [REMEDIATION.md](REMEDIATION.md)
+before upgrading an existing HTTP browser configuration. Unknown store/helper versions refuse
 startup. Restore a backup only with all relevant writers stopped. Never restore
 an old API database to infer that newer GPU effects did not occur. Inspect the
 root helper journal and real workload/device state first. Credential recovery
@@ -189,7 +196,10 @@ Use `bridgectl recover OPERATION_ID` to inspect an uncertain operation and obtai
 a validated recovery plan. If the executor is still running, wait; if its final
 result is known, refresh operation status. Before-dispatch source failures can
 be reconciled without GPU changes. A handover requires a qualified explicit
-restore under the legacy lock. The prior snapshot is retained; an occupied GPU,
+restore under the legacy lock. Failed restore attempts form one persisted chain;
+a validated retry can reference the original or an unresolved attempt. Local model
+recovery inspects publication receipts/hashes; build recovery uses the worker's
+own records and cgroups, not host restoration. The prior snapshot is retained; an occupied GPU,
 incomplete process visibility, changed boot, expired qualification or failed
 readiness can continue to refuse restore. Resolve the actual cause before retry.
 

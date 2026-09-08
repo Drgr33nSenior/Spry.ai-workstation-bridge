@@ -85,6 +85,15 @@ them. A surviving helper/worker continues independently. Unknown outcomes remain
 result or creates a restore plan. Already queued work cannot cross an unresolved
 recovery fence. Restore is not a promise that every earlier effect is reversible.
 
+Recovery uses persisted parent links within each authority's journal. Retained
+attempts keep their ancestors; malformed links and unrelated fences are not
+merged. Failed restores can be retried as a chain. Successful helper recovery
+is durable before parent settlement, and restart rolls forward settlement without
+repeating effects. Local model inspection binds the original execution hash to
+receipt, manifest and publication evidence; worker inspection uses worker status.
+Neither selects GPU restoration. Source-only reconciliation never dismisses an
+uncertain external effect. See [migration and recovery](REMEDIATION.md).
+
 ## Authentication and network boundary
 
 Offline bootstrap/recovery checks root or the explicit owner UID and acquires
@@ -97,7 +106,12 @@ start named builds, revoke credentials or inspect the audit stream.
 
 Browser sessions live server-side, expire within 30 minutes or the underlying
 credential's expiry, and are revoked by logout or credential revocation. Cookies
-use HttpOnly, SameSite=Strict and Secure on HTTPS. Host, Origin, Fetch Metadata
+use HttpOnly and SameSite=Strict. Live browser sessions require explicit local
+policy and a dedicated trusted HTTPS hostname; their `__Host-` cookies are Secure,
+host-only and Path=/. All HTTPS ports at that hostname share the trust boundary.
+Live loopback HTTP is bearer CLI-only; demo HTTP uses a separate cookie purpose.
+Persisted session purpose rejects pre-upgrade and cross-mode tokens even if a
+client renames the cookie. Host, Origin, Fetch Metadata
 and CSRF validation apply before browser mutation. Bearer clients can omit
 browser headers. Body/header/time bounds and bounded authentication-attempt
 limits protect admission. There is no permissive CORS, forwarded-header trust,

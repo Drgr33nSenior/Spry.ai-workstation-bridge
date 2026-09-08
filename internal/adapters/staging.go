@@ -20,6 +20,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -35,6 +36,7 @@ type Stager struct {
 	client *http.Client
 	mu     sync.Mutex
 	free   func(string) (int64, error)
+	rename func(*os.Root, string, string) error
 }
 type stagedReceipt struct {
 	Model        string            `json:"model"`
@@ -44,6 +46,14 @@ type stagedReceipt struct {
 	Files        []domain.Artifact `json:"files"`
 	VerifiedAt   time.Time         `json:"verified_at"`
 }
+
+const (
+	readerDirectoryMode fs.FileMode = os.ModeSetgid | 0750
+	readerFileMode      fs.FileMode = 0640
+	// Keep setgid while denying all group traversal: children must inherit the
+	// reviewed reader group even though partial data remains owner-only.
+	privateDirectoryMode fs.FileMode = os.ModeSetgid | 0700
+)
 
 var origins = map[string]bool{"huggingface.co": true, "cdn-lfs.huggingface.co": true, "cdn-lfs.hf.co": true, "cdn-lfs-us-1.hf.co": true, "cas-bridge.xethub.hf.co": true}
 
@@ -129,10 +139,12 @@ func NewStager(root string, budget int64) (*Stager, error) {
 	if e != nil {
 		return nil, e
 	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeSetgid == 0 || info.Mode().Perm()&0022 != 0 {
-		return nil, errors.New("model root must be a real setgid directory with the reviewed workload reader group and no group/world write access")
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeSetgid == 0 || info.Mode().Perm() != 0750 {
+		return nil, errors.New("model root must be a real 2750 setgid directory with the reviewed workload reader group")
 	}
-	return &Stager{root: root, budget: budget, client: downloadClient(), free: freeBytes}, nil
+	return &Stager{root: root, budget: budget, client: downloadClient(), free: freeBytes, rename: func(r *os.Root, oldName, newName string) error {
+		return r.Rename(oldName, newName)
+	}}, nil
 }
 func safeRelative(p string) bool {
 	return p != "" && path.Clean(p) == p && !strings.HasPrefix(p, "/") && !strings.Contains(p, "\\") && !strings.Contains(p, "\x00") && p != ".." && !strings.HasPrefix(p, "../")
@@ -166,6 +178,289 @@ func rootParents(root *os.Root, p string) error {
 		owner, ok := i.Sys().(*syscall.Stat_t)
 		if !ok || owner.Gid != rootOwner.Gid {
 			return errors.New("model directory does not retain the reviewed reader group")
+		}
+	}
+	return nil
+}
+
+func rootGroup(root *os.Root) (uint32, error) {
+	i, e := root.Stat(".")
+	if e != nil {
+		return 0, e
+	}
+	owner, ok := i.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, errors.New("model root group cannot be observed")
+	}
+	return owner.Gid, nil
+}
+
+func checkedDirectory(root *os.Root, p string, group uint32) (fs.FileInfo, error) {
+	i, e := root.Lstat(p)
+	if e != nil {
+		return nil, e
+	}
+	if !i.IsDir() || i.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("managed path contains a symlink or non-directory")
+	}
+	owner, ok := i.Sys().(*syscall.Stat_t)
+	if !ok || owner.Gid != group {
+		return nil, errors.New("model directory does not retain the reviewed reader group")
+	}
+	return i, nil
+}
+
+func checkedRegularFile(root *os.Root, p string, group uint32) (fs.FileInfo, error) {
+	i, e := root.Lstat(p)
+	if e != nil {
+		return nil, e
+	}
+	if !i.Mode().IsRegular() || i.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("model file is missing, symlinked or not regular")
+	}
+	owner, ok := i.Sys().(*syscall.Stat_t)
+	if !ok || owner.Gid != group {
+		return nil, errors.New("model file does not retain the reviewed reader group")
+	}
+	return i, nil
+}
+
+func requireReaderDirectory(root *os.Root, p string, group uint32) error {
+	i, e := checkedDirectory(root, p, group)
+	if e != nil {
+		return e
+	}
+	if i.Mode().Perm() != 0750 || i.Mode()&os.ModeSetgid == 0 {
+		return errors.New("published model directory is not group-traversable setgid mode 2750")
+	}
+	return nil
+}
+
+func requireReaderFile(root *os.Root, p string, group uint32) error {
+	i, e := checkedRegularFile(root, p, group)
+	if e != nil {
+		return e
+	}
+	if i.Mode().Perm() != readerFileMode || i.Mode()&(os.ModeSetgid|os.ModeSticky) != 0 {
+		return errors.New("published model file is not group-readable mode 0640")
+	}
+	return nil
+}
+
+func snapshotDirectories(m catalog.Model) []string {
+	dirs := map[string]bool{"": true}
+	for _, f := range m.Files {
+		for dir := path.Dir(f.Path); dir != "."; dir = path.Dir(dir) {
+			dirs[dir] = true
+		}
+	}
+	result := make([]string, 0, len(dirs))
+	for dir := range dirs {
+		result = append(result, dir)
+	}
+	// Parents must be chmodded before children. Lexical order provides that for
+	// reviewed slash-separated relative paths.
+	slices.Sort(result)
+	return result
+}
+
+func joinSnapshot(snapshot, rel string) string {
+	if rel == "" {
+		return snapshot
+	}
+	return snapshot + "/" + rel
+}
+
+func receiptMatches(receipt stagedReceipt, m catalog.Model, artifacts []domain.Artifact) bool {
+	if receipt.Model != m.ID || receipt.Revision != m.Revision || receipt.ManifestHash != domain.Hash(m.Files) || receipt.Status != "verified-inputs-not-qualified" || receipt.VerifiedAt.IsZero() || len(receipt.Files) != len(artifacts) {
+		return false
+	}
+	for i := range artifacts {
+		// Receipts preserve the staging qualification. A later explicit verify
+		// reports the stronger "verified" observation to its caller.
+		want := artifacts[i]
+		want.Qualification = "staged-inputs-not-qualified"
+		if receipt.Files[i] != want {
+			return false
+		}
+	}
+	return true
+}
+
+// validateSnapshot proves the reviewed manifest, receipt and exact managed tree.
+// It deliberately separates evidence validation from publication permissions so
+// a verified older snapshot can be repaired without trusting its previous mode.
+func validateSnapshot(ctx context.Context, root *os.Root, snapshot string, m catalog.Model, requireModes bool) ([]domain.Artifact, error) {
+	group, e := rootGroup(root)
+	if e != nil {
+		return nil, e
+	}
+	directories := snapshotDirectories(m)
+	for _, dir := range directories {
+		p := joinSnapshot(snapshot, dir)
+		if requireModes {
+			if e = requireReaderDirectory(root, p, group); e != nil {
+				return nil, e
+			}
+		} else if _, e = checkedDirectory(root, p, group); e != nil {
+			return nil, e
+		}
+	}
+
+	var result []domain.Artifact
+	expected := map[string]bool{".bridge-receipt.json": true}
+	for _, f := range m.Files {
+		if !safeRelative(f.Path) {
+			return nil, errors.New("unsafe manifest path")
+		}
+		expected[f.Path] = true
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+		p := snapshot + "/" + f.Path
+		i, e := checkedRegularFile(root, p, group)
+		if e != nil || i.Size() != f.Size {
+			return nil, errors.New("model file missing, symlinked or wrong size")
+		}
+		if requireModes {
+			if e = requireReaderFile(root, p, group); e != nil {
+				return nil, e
+			}
+		}
+		in, e := root.Open(p)
+		if e != nil {
+			return nil, e
+		}
+		h, e := hashFor(f)
+		if e != nil {
+			in.Close()
+			return nil, e
+		}
+		sh := sha256.New()
+		_, e = io.Copy(io.MultiWriter(h, sh), io.LimitReader(in, f.Size+1))
+		in.Close()
+		if e != nil || hex.EncodeToString(h.Sum(nil)) != f.Digest {
+			return nil, errors.New("staged model digest mismatch")
+		}
+		result = append(result, domain.Artifact{Name: f.Path, SHA256: hex.EncodeToString(sh.Sum(nil)), Size: f.Size, SourceRevision: m.Revision, Qualification: "verified-inputs-not-qualified"})
+	}
+
+	receiptPath := snapshot + "/.bridge-receipt.json"
+	if requireModes {
+		if e = requireReaderFile(root, receiptPath, group); e != nil {
+			return nil, e
+		}
+	} else if _, e = checkedRegularFile(root, receiptPath, group); e != nil {
+		return nil, e
+	}
+	f, e := root.Open(receiptPath)
+	if e != nil {
+		return nil, e
+	}
+	var receipt stagedReceipt
+	decodeErr := json.NewDecoder(io.LimitReader(f, 1<<20)).Decode(&receipt)
+	closeErr := f.Close()
+	if decodeErr != nil || closeErr != nil || !receiptMatches(receipt, m, result) {
+		return nil, errors.New("staged model receipt does not match verified manifest")
+	}
+
+	err := fs.WalkDir(root.FS(), snapshot, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return errors.New("staged model contains symlink")
+		}
+		rel := strings.TrimPrefix(p, snapshot)
+		rel = strings.TrimPrefix(rel, "/")
+		if d.IsDir() {
+			if !containsSnapshotDirectory(directories, rel) {
+				return errors.New("staged model contains unreviewed directory")
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() || !expected[rel] {
+			return errors.New("staged model contains unreviewed extra file")
+		}
+		return nil
+	})
+	return result, err
+}
+
+func containsSnapshotDirectory(directories []string, wanted string) bool {
+	for _, dir := range directories {
+		if dir == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func setPublishedSnapshotPermissions(root *os.Root, snapshot string, m catalog.Model) error {
+	group, e := rootGroup(root)
+	if e != nil {
+		return e
+	}
+	for _, dir := range snapshotDirectories(m) {
+		p := joinSnapshot(snapshot, dir)
+		if _, e = checkedDirectory(root, p, group); e != nil {
+			return e
+		}
+		if e = root.Chmod(p, readerDirectoryMode); e != nil {
+			return e
+		}
+		if e = requireReaderDirectory(root, p, group); e != nil {
+			return e
+		}
+	}
+	for _, f := range append(append([]catalog.File(nil), m.Files...), catalog.File{Path: ".bridge-receipt.json"}) {
+		p := snapshot + "/" + f.Path
+		if _, e = checkedRegularFile(root, p, group); e != nil {
+			return e
+		}
+		if e = root.Chmod(p, readerFileMode); e != nil {
+			return e
+		}
+		if e = requireReaderFile(root, p, group); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+func setModelParentPermissions(root *os.Root, prefix string) error {
+	parent := path.Dir(prefix)
+	group, e := rootGroup(root)
+	if e != nil {
+		return e
+	}
+	if _, e = checkedDirectory(root, parent, group); e != nil {
+		return e
+	}
+	if e = root.Chmod(parent, readerDirectoryMode); e != nil {
+		return e
+	}
+	return requireReaderDirectory(root, parent, group)
+}
+
+func publishedReaderModes(root *os.Root, prefix string, m catalog.Model) error {
+	group, e := rootGroup(root)
+	if e != nil {
+		return e
+	}
+	if e = requireReaderDirectory(root, path.Dir(prefix), group); e != nil {
+		return e
+	}
+	for _, dir := range snapshotDirectories(m) {
+		if e = requireReaderDirectory(root, joinSnapshot(prefix, dir), group); e != nil {
+			return e
+		}
+	}
+	for _, f := range append(append([]catalog.File(nil), m.Files...), catalog.File{Path: ".bridge-receipt.json"}) {
+		if e = requireReaderFile(root, prefix+"/"+f.Path, group); e != nil {
+			return e
 		}
 	}
 	return nil
@@ -231,7 +526,10 @@ func (s *Stager) Stage(ctx context.Context, m catalog.Model, progress func(strin
 		return nil, e
 	}
 	if _, e = root.Lstat(prefix); e == nil {
-		return nil, errors.New("model revision already exists; verify it explicitly")
+		// A repeat stage is the explicit repair workflow for a published legacy
+		// snapshot. It still refuses malformed receipts, hashes and paths rather
+		// than treating an existing directory as ready.
+		return repairPublishedPermissions(ctx, root, prefix, m)
 	}
 	var needed int64
 	seen := map[string]bool{}
@@ -264,6 +562,23 @@ func (s *Stager) Stage(ctx context.Context, m catalog.Model, progress func(strin
 		return nil, e
 	}
 	tmpName := filepath.Base(tmp)
+	// MkdirTemp is owner-only, but make that invariant explicit rather than
+	// depending on either its implementation or the service umask. The child
+	// snapshot can receive reader modes while this parent keeps it private until
+	// the atomic rename into the published model-ID directory.
+	if e = root.Chmod(tmpName, privateDirectoryMode); e != nil {
+		return nil, e
+	}
+	if i, privateErr := root.Lstat(tmpName); privateErr != nil || !i.IsDir() || i.Mode().Perm() != 0700 || i.Mode()&os.ModeSetgid == 0 {
+		return nil, errors.New("partial model staging directory is not owner-only")
+	}
+	snapshot := tmpName + "/snapshot"
+	if e = root.Mkdir(snapshot, 0700); e != nil {
+		return nil, e
+	}
+	if e = root.Chmod(snapshot, privateDirectoryMode); e != nil {
+		return nil, e
+	}
 	var artifacts []domain.Artifact
 	var copied int64
 	for _, f := range m.Files {
@@ -272,7 +587,7 @@ func (s *Stager) Stage(ctx context.Context, m catalog.Model, progress func(strin
 			return nil, ctx.Err()
 		default:
 		}
-		rel := tmpName + "/" + f.Path
+		rel := snapshot + "/" + f.Path
 		if e = rootParents(root, rel); e != nil {
 			return nil, e
 		}
@@ -337,7 +652,7 @@ func (s *Stager) Stage(ctx context.Context, m catalog.Model, progress func(strin
 	}
 	receipt := stagedReceipt{Model: m.ID, Revision: m.Revision, ManifestHash: domain.Hash(m.Files), Status: "verified-inputs-not-qualified", Files: artifacts, VerifiedAt: time.Now().UTC()}
 	b, _ := json.MarshalIndent(receipt, "", "  ")
-	file, e := root.OpenFile(tmpName+"/.bridge-receipt.json", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0640)
+	file, e := root.OpenFile(snapshot+"/.bridge-receipt.json", os.O_WRONLY|os.O_CREATE|os.O_EXCL, readerFileMode)
 	if e != nil {
 		return nil, e
 	}
@@ -352,7 +667,7 @@ func (s *Stager) Stage(ctx context.Context, m catalog.Model, progress func(strin
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	dir, e := root.Open(tmpName)
+	dir, e := root.Open(snapshot)
 	if e != nil {
 		return nil, e
 	}
@@ -361,18 +676,30 @@ func (s *Stager) Stage(ctx context.Context, m catalog.Model, progress func(strin
 	if e != nil {
 		return nil, e
 	}
+	// A model ID parent is a single reviewed path. It may have been made under
+	// the 0077 service umask by an older run, so establish its exact traversal
+	// mode before its verified child is published.
 	if e = rootParents(root, prefix); e != nil {
 		return nil, e
 	}
-	// Until every file is verified, the partial snapshot is owner-only. Its GID
-	// and every file GID were inherited from the administrator-set model root.
-	if e = root.Chmod(tmpName, 0750); e != nil {
+	if e = setModelParentPermissions(root, prefix); e != nil {
 		return nil, e
+	}
+	if _, e = validateSnapshot(ctx, root, snapshot, m, false); e != nil {
+		return nil, e
+	}
+	// The snapshot remains unreachable to workload readers through its private
+	// .partial-* parent while these explicit modes defeat the service umask.
+	if e = setPublishedSnapshotPermissions(root, snapshot, m); e != nil {
+		return nil, e
+	}
+	if i, privateErr := root.Lstat(tmpName); privateErr != nil || !i.IsDir() || i.Mode().Perm() != 0700 || i.Mode()&os.ModeSetgid == 0 {
+		return nil, errors.New("partial model staging directory lost owner-only protection")
 	}
 	if _, e = root.Lstat(prefix); e == nil {
 		return nil, errors.New("model publication conflict")
 	}
-	if e = root.Rename(tmpName, prefix); e != nil {
+	if e = s.rename(root, snapshot, prefix); e != nil {
 		return nil, e
 	}
 	dir, e = root.Open(path.Dir(prefix))
@@ -381,6 +708,21 @@ func (s *Stager) Stage(ctx context.Context, m catalog.Model, progress func(strin
 	}
 	defer dir.Close()
 	if e = dir.Sync(); e != nil {
+		return nil, e
+	}
+	if e = root.Remove(tmpName); e != nil {
+		return nil, errors.New("published model snapshot but could not remove private staging directory")
+	}
+	rootDir, e := root.Open(".")
+	if e != nil {
+		return nil, e
+	}
+	e = rootDir.Sync()
+	rootDir.Close()
+	if e != nil {
+		return nil, e
+	}
+	if _, e = validateSnapshot(ctx, root, prefix, m, true); e != nil {
 		return nil, e
 	}
 	return artifacts, nil
@@ -398,52 +740,83 @@ func (s *Stager) Verify(ctx context.Context, m catalog.Model) ([]domain.Artifact
 	if e != nil {
 		return nil, e
 	}
-	var result []domain.Artifact
-	expected := map[string]bool{".bridge-receipt.json": true}
-	for _, f := range m.Files {
-		if !safeRelative(f.Path) {
-			return nil, errors.New("unsafe manifest path")
-		}
-		expected[f.Path] = true
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-		i, e := root.Lstat(prefix + "/" + f.Path)
-		if e != nil || !i.Mode().IsRegular() || i.Size() != f.Size {
-			return nil, errors.New("model file missing, symlinked or wrong size")
-		}
-		in, e := root.Open(prefix + "/" + f.Path)
-		if e != nil {
-			return nil, e
-		}
-		h, e := hashFor(f)
-		if e != nil {
-			in.Close()
-			return nil, e
-		}
-		sh := sha256.New()
-		_, e = io.Copy(io.MultiWriter(h, sh), io.LimitReader(in, f.Size+1))
-		in.Close()
-		if e != nil || hex.EncodeToString(h.Sum(nil)) != f.Digest {
-			return nil, errors.New("staged model digest mismatch")
-		}
-		result = append(result, domain.Artifact{Name: f.Path, SHA256: hex.EncodeToString(sh.Sum(nil)), Size: f.Size, SourceRevision: m.Revision, Qualification: "verified-inputs-not-qualified"})
+	if e = publishedReaderModes(root, prefix, m); e != nil {
+		return nil, e
 	}
-	err := fs.WalkDir(root.FS(), prefix, func(p string, d fs.DirEntry, e error) error {
-		if e != nil {
-			return e
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return errors.New("staged model contains symlink")
-		}
-		if !d.IsDir() && !expected[strings.TrimPrefix(p, prefix+"/")] {
-			return errors.New("staged model contains unreviewed extra file")
-		}
-		return nil
-	})
-	return result, err
+	return validateSnapshot(ctx, root, prefix, m, true)
+}
+
+// RepairPublishedPermissions repairs only a snapshot that still proves its
+// reviewed manifest and receipt. It neither traverses arbitrary paths nor makes
+// incomplete .partial-* downloads reader-accessible.
+func (s *Stager) RepairPublishedPermissions(ctx context.Context, m catalog.Model) ([]domain.Artifact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, e := os.OpenRoot(s.root)
+	if e != nil {
+		return nil, e
+	}
+	defer root.Close()
+	prefix, e := modelPrefix(m)
+	if e != nil {
+		return nil, e
+	}
+	return repairPublishedPermissions(ctx, root, prefix, m)
+}
+
+func repairPublishedPermissions(ctx context.Context, root *os.Root, prefix string, m catalog.Model) ([]domain.Artifact, error) {
+	result, e := validateSnapshot(ctx, root, prefix, m, false)
+	if e != nil {
+		return nil, e
+	}
+	if e = setModelParentPermissions(root, prefix); e != nil {
+		return nil, e
+	}
+	if e = setPublishedSnapshotPermissions(root, prefix, m); e != nil {
+		return nil, e
+	}
+	if _, e = validateSnapshot(ctx, root, prefix, m, true); e != nil {
+		return nil, e
+	}
+	return result, nil
+}
+
+// VerifyContent proves the receipt, reviewed manifest and exact managed tree
+// without accepting publication permissions. Recovery inspection uses it only
+// to describe a permission fault; it never chmods a snapshot implicitly.
+func (s *Stager) VerifyContent(ctx context.Context, m catalog.Model) ([]domain.Artifact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, e := os.OpenRoot(s.root)
+	if e != nil {
+		return nil, e
+	}
+	defer root.Close()
+	prefix, e := modelPrefix(m)
+	if e != nil {
+		return nil, e
+	}
+	return validateSnapshot(ctx, root, prefix, m, false)
+}
+
+func (s *Stager) snapshotPresent(m catalog.Model) (bool, error) {
+	prefix, e := modelPrefix(m)
+	if e != nil {
+		return false, e
+	}
+	root, e := os.OpenRoot(s.root)
+	if e != nil {
+		return false, e
+	}
+	defer root.Close()
+	_, e = root.Lstat(prefix)
+	if errors.Is(e, fs.ErrNotExist) {
+		return false, nil
+	}
+	if e != nil {
+		return false, e
+	}
+	return true, nil
 }
 
 func (s *Stager) Status(m catalog.Model) string {
@@ -462,7 +835,7 @@ func (s *Stager) Status(m catalog.Model) string {
 	}
 	defer f.Close()
 	var receipt stagedReceipt
-	if json.NewDecoder(io.LimitReader(f, 1<<20)).Decode(&receipt) != nil || receipt.ManifestHash != domain.Hash(m.Files) || receipt.Revision != m.Revision {
+	if json.NewDecoder(io.LimitReader(f, 1<<20)).Decode(&receipt) != nil || receipt.ManifestHash != domain.Hash(m.Files) || receipt.Revision != m.Revision || publishedReaderModes(root, p, m) != nil {
 		return "verification-required"
 	}
 	return receipt.Status + " at " + receipt.VerifiedAt.Format(time.RFC3339)

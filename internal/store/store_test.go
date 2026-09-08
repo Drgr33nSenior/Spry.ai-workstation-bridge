@@ -5,9 +5,21 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/domain"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/safefile"
 )
+
+func TestPruningRetainsRecoveryAncestors(t *testing.T) {
+	s := NewState("demo")
+	s.Operations["A"] = domain.Operation{ID: "A", State: "failed", UpdatedAt: time.Now().Add(-40 * 24 * time.Hour)}
+	s.Operations["B"] = domain.Operation{ID: "B", State: "recovery-required", RecoveryRequired: true, Plan: domain.Plan{Draft: domain.Draft{RecoveryID: "A"}}}
+	prune(&s)
+	if _, ok := s.Operations["A"]; !ok {
+		t.Fatal("pruning destroyed recovery linkage")
+	}
+}
 
 func dir(t *testing.T) string {
 	t.Helper()

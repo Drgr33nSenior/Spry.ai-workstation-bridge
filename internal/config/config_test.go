@@ -22,6 +22,55 @@ func TestUnsafeListenersAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLiveBrowserSessionsRequireDedicatedHTTPSIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(*Config)
+	}{
+		{"plaintext loopback", func(c *Config) { c.Mode = "live"; c.BrowserSessions = true }},
+		{"HTTPS IP literal", func(c *Config) {
+			c.Mode = "live"
+			c.BrowserSessions = true
+			c.ExternalURL = "https://127.0.0.1:8743"
+			c.AllowedHosts = []string{"127.0.0.1:8743"}
+			c.TLSCertFile = "/etc/bridge/tls/server.crt"
+			c.TLSKeyFile = "/etc/bridge/tls/server.key"
+		}},
+		{"HTTPS localhost", func(c *Config) {
+			c.Mode = "live"
+			c.BrowserSessions = true
+			c.ExternalURL = "https://localhost:8743"
+			c.AllowedHosts = []string{"localhost:8743"}
+			c.TLSCertFile = "/etc/bridge/tls/server.crt"
+			c.TLSKeyFile = "/etc/bridge/tls/server.key"
+		}},
+		{"HTTPS single-label host", func(c *Config) {
+			c.Mode = "live"
+			c.BrowserSessions = true
+			c.ExternalURL = "https://bridge:8743"
+			c.AllowedHosts = []string{"bridge:8743"}
+			c.TLSCertFile = "/etc/bridge/tls/server.crt"
+			c.TLSKeyFile = "/etc/bridge/tls/server.key"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := good()
+			tc.edit(&c)
+			if c.Validate() == nil {
+				t.Fatal("unsafe live browser configuration accepted")
+			}
+		})
+	}
+	demo := good()
+	demo.BrowserSessions = true
+	if err := demo.Validate(); err != nil {
+		t.Fatalf("demo browser session separation refused: %v", err)
+	}
+	if got := demo.BrowserSessionCookieName(); got != DemoBrowserSessionCookie {
+		t.Fatalf("demo cookie %q", got)
+	}
+}
 func TestStrictJSON(t *testing.T) {
 	for _, b := range []string{`{"mode":"demo","mode":"live"}`, `{"unknown":1}`, `{} {}`, `{"mode":`, `{"owner_uid":"0"}`} {
 		var c Config

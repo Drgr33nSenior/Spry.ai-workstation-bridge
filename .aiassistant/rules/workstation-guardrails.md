@@ -1,3 +1,7 @@
+---
+apply: always
+---
+
 <!-- GENERATED — DO NOT EDIT
 Canonical source: policy/manifest.json and policy/fragments/
 -->

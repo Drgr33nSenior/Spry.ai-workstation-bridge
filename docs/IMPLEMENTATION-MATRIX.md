@@ -24,6 +24,14 @@ with `Bridge:`. The expected workstation specification is not discovered hardwar
 | Private deployment/RBAC | Existing K3s 1.35.7+k3s1 and namespace abstractions | Outside-K3s services, local sockets, explicit HTTPS/VPN policy, narrow RBAC | Source contract/manifests and cross-builds | Admission, RBAC and systemd behavior NOT RUN on actual workstation |
 | Release packaging | No existing application build | Go1.27.1, standard-library runtime, pinned validation/security tools, local archives, source-only CI | `make check`, `make package`, `make browser` | Cross-builds do not qualify deployment |
 
+Remediation from review baseline `264e09e` adds restrictive-umask publication and
+verified repeat-stage repair, linked restore retries, executor-specific recovery,
+delegated-controller initialization/readback, and dedicated live HTTPS browser
+sessions with generation invalidation. Permanent regressions and the isolated
+cross-UID Linux reader check cover these boundaries; they do not qualify the
+installed workstation. See [REMEDIATION.md](REMEDIATION.md) and the current section
+of [VERIFICATION.md](VERIFICATION.md) for observed outcomes and remaining checks.
+
 Supported source capabilities have live implementation paths. Missing installed
 runtime hashes, reviewed source inputs, offline image input closure, dedicated
 identity, sandbox prerequisites or qualification remain explicit integration

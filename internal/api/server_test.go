@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -214,6 +216,221 @@ func TestBrowserSessionCSRFRevocationExpiry(t *testing.T) {
 	status, _, _ = f.request(t, "GET", "/api/v1/config", "viewer", nil, nil)
 	if status != 401 {
 		t.Fatal("expired bearer accepted")
+	}
+}
+
+func TestBrowserSessionExpiry(t *testing.T) {
+	f := setup(t)
+	status, _, header := f.request(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"credential": f.tokens["owner"]}, map[string]string{"Origin": f.server.URL})
+	if status != http.StatusOK {
+		t.Fatalf("login %d", status)
+	}
+	cookie := strings.Split(header.Get("Set-Cookie"), ";")[0]
+	if err := f.db.Update(func(v *store.State) error {
+		for id, session := range v.Sessions {
+			session.ExpiresAt = time.Now().Add(-time.Second)
+			v.Sessions[id] = session
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	status, _, _ = f.request(t, http.MethodGet, "/api/v1/auth/session", "", nil, map[string]string{"Cookie": cookie})
+	if status != http.StatusUnauthorized {
+		t.Fatalf("expired browser session accepted: %d", status)
+	}
+}
+
+// TestLiveBrowserSessionDoesNotCrossToPlaintextLoopback reproduces the prior
+// host-scoped cookie leak and proves the replacement does not send a live
+// management session to an unrelated plaintext loopback service. This does not
+// claim HTTPS ports isolate cookies: every HTTPS service on the dedicated DNS
+// management identity remains part of the same trust boundary.
+func TestLiveBrowserSessionDoesNotCrossToPlaintextLoopback(t *testing.T) {
+	f := setup(t)
+	live := httptest.NewUnstartedServer(nil)
+	_, port, err := net.SplitHostPort(live.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	managementHost := "bridge.test:" + port
+	origin := "https://" + managementHost
+	// The test TLS listener is addressed by loopback but the configured Host and
+	// Origin model a separately named trusted management endpoint.
+	live.Config.Handler = api.New(config.Config{Mode: "live", BrowserSessions: true, Target: "demo-workstation", AllowedHosts: []string{managementHost}, ExternalURL: origin}, f.eng, nil).Handler()
+	live.StartTLS()
+	defer live.Close()
+	var ownerID string
+	for id, credential := range f.db.View().Credentials {
+		if credential.Role == "owner" {
+			ownerID = id
+		}
+	}
+	if ownerID == "" {
+		t.Fatal("owner fixture credential missing")
+	}
+	legacyToken := auth.Secret()
+	if err := f.db.Update(func(v *store.State) error {
+		v.Sessions[auth.Verifier(legacyToken)] = store.Session{Verifier: auth.Verifier(legacyToken), CredentialID: ownerID, CSRF: auth.Secret(), ExpiresAt: time.Now().Add(time.Hour)}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// An on-disk pre-v2 session record must not become valid merely because an
+	// attacker rewraps its token in the new cookie name.
+	rewrapped, err := http.NewRequest(http.MethodGet, live.URL+"/api/v1/auth/session", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewrapped.Host = managementHost
+	rewrapped.Header.Set("Cookie", config.LiveBrowserSessionCookie+"="+legacyToken)
+	if response, err := (&http.Client{Transport: live.Client().Transport}).Do(rewrapped); err != nil || response.StatusCode != http.StatusUnauthorized {
+		if response != nil {
+			response.Body.Close()
+		}
+		t.Fatalf("pre-v2 session token was accepted in the new cookie: response=%v error=%v", response, err)
+	} else {
+		response.Body.Close()
+	}
+	demoToken := auth.Secret()
+	if err := f.db.Update(func(v *store.State) error {
+		v.Sessions[auth.Verifier(demoToken)] = store.Session{Verifier: auth.Verifier(demoToken), CredentialID: ownerID, CSRF: auth.Secret(), ExpiresAt: time.Now().Add(time.Hour), Purpose: config.DemoBrowserSessionPurpose}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rewrapped.Header.Set("Cookie", config.LiveBrowserSessionCookie+"="+demoToken)
+	if response, err := (&http.Client{Transport: live.Client().Transport}).Do(rewrapped); err != nil || response.StatusCode != http.StatusUnauthorized {
+		if response != nil {
+			response.Body.Close()
+		}
+		t.Fatalf("demo session token was accepted by the live cookie policy: response=%v error=%v", response, err)
+	} else {
+		response.Body.Close()
+	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := live.Client()
+	client.Jar = jar
+	body, _ := json.Marshal(map[string]string{"credential": f.tokens["owner"]})
+	req, err := http.NewRequest(http.MethodPost, live.URL+"/api/v1/auth/login", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", origin)
+	req.Host = managementHost
+	response, err := client.Do(req)
+	if err != nil || response.StatusCode != http.StatusOK {
+		if response != nil {
+			response.Body.Close()
+		}
+		t.Fatalf("login: response=%v error=%v", response, err)
+	}
+	var cookie *http.Cookie
+	for _, candidate := range response.Cookies() {
+		if candidate.Name == config.LiveBrowserSessionCookie {
+			cookie = candidate
+		}
+	}
+	response.Body.Close()
+	if cookie == nil || !cookie.Secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/" || cookie.Domain != "" {
+		t.Fatalf("live cookie is not a host-only secure strict session: %#v", cookie)
+	}
+	// Pre-remediation, this request received bridge_session. The current server
+	// neither accepts that name nor uses it for new session state.
+	legacy, err := http.NewRequest(http.MethodGet, live.URL+"/api/v1/auth/session", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.Host = managementHost
+	legacy.Header.Set("Cookie", config.LegacyBrowserSessionCookie+"="+cookie.Value)
+	legacyClient := &http.Client{Transport: live.Client().Transport}
+	if response, err := legacyClient.Do(legacy); err != nil || response.StatusCode != http.StatusUnauthorized {
+		if response != nil {
+			response.Body.Close()
+		}
+		t.Fatalf("legacy session name accepted: response=%v error=%v", response, err)
+	} else {
+		response.Body.Close()
+	}
+	seen := make(chan bool, 1)
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := r.Cookie(config.LiveBrowserSessionCookie)
+		seen <- err == nil
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer other.Close()
+	response, err = client.Get(other.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if <-seen {
+		t.Fatal("live Secure session crossed to unrelated plaintext loopback service")
+	}
+}
+
+func TestLiveLoopbackIsBearerCLIOnly(t *testing.T) {
+	f := setup(t)
+	server := httptest.NewUnstartedServer(nil)
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := "127.0.0.1:" + port
+	// The exact server origin is intentionally loopback HTTP: it remains valid
+	// only for the bearer CLI, never for cookie-backed browser management.
+	origin := "http://" + host
+	server.Config.Handler = api.New(config.Config{Mode: "live", Target: "demo-workstation", AllowedHosts: []string{host}, ExternalURL: origin}, f.eng, nil).Handler()
+	server.Start()
+	defer server.Close()
+	request, err := http.NewRequest(http.MethodGet, origin+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response, err := server.Client().Do(request); err != nil || response.StatusCode != http.StatusForbidden {
+		if response != nil {
+			body, _ := io.ReadAll(response.Body)
+			response.Body.Close()
+			t.Fatalf("live HTTP browser UI was available: status=%d error=%v body=%s", response.StatusCode, err, body)
+		}
+		t.Fatalf("live HTTP browser UI was unavailable: error=%v", err)
+	} else {
+		response.Body.Close()
+	}
+	status, _, _ := f.request(t, http.MethodGet, "/api/v1/config", "owner", nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("fixture bearer precondition failed: %d", status)
+	}
+	request, err = http.NewRequest(http.MethodGet, origin+"/api/v1/config", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+f.tokens["owner"])
+	if response, err := server.Client().Do(request); err != nil || response.StatusCode != http.StatusOK {
+		if response != nil {
+			response.Body.Close()
+		}
+		t.Fatalf("live loopback bearer CLI refused: response=%v error=%v", response, err)
+	} else {
+		response.Body.Close()
+	}
+	request, err = http.NewRequest(http.MethodPost, origin+"/api/v1/auth/login", strings.NewReader(`{"credential":"ignored"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", origin)
+	if response, err := server.Client().Do(request); err != nil || response.StatusCode != http.StatusForbidden {
+		if response != nil {
+			response.Body.Close()
+		}
+		t.Fatalf("live HTTP browser login was available: response=%v error=%v", response, err)
+	} else {
+		response.Body.Close()
 	}
 }
 func TestPlanApplyIdempotencySourceDrift(t *testing.T) {

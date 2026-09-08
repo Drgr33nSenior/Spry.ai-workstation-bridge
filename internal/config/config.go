@@ -17,26 +17,60 @@ import (
 )
 
 type Config struct {
-	Mode                    string   `json:"mode"`
-	StateDir                string   `json:"state_dir"`
-	SourcePath              string   `json:"source_path"`
-	Listen                  string   `json:"listen"`
-	AllowedHosts            []string `json:"allowed_hosts"`
-	ExternalURL             string   `json:"external_url"`
-	TLSCertFile             string   `json:"tls_cert_file"`
-	TLSKeyFile              string   `json:"tls_key_file"`
-	OwnerUID                int      `json:"owner_uid"`
-	Target                  string   `json:"target"`
-	Environment             string   `json:"environment"`
-	ReferenceRoot           string   `json:"reference_root"`
-	ModelRoot               string   `json:"model_root"`
-	CompilerCacheRoot       string   `json:"compiler_cache_root"`
-	ShaderCacheRoot         string   `json:"shader_cache_root"`
-	HostSocket              string   `json:"host_socket"`
-	WorkerSocket            string   `json:"worker_socket"`
-	ClientBaseURL           string   `json:"client_base_url"`
-	QueueDepth              int      `json:"queue_depth"`
-	OperationTimeoutSeconds int      `json:"operation_timeout_seconds"`
+	Mode         string   `json:"mode"`
+	StateDir     string   `json:"state_dir"`
+	SourcePath   string   `json:"source_path"`
+	Listen       string   `json:"listen"`
+	AllowedHosts []string `json:"allowed_hosts"`
+	ExternalURL  string   `json:"external_url"`
+	TLSCertFile  string   `json:"tls_cert_file"`
+	TLSKeyFile   string   `json:"tls_key_file"`
+	// BrowserSessions is an explicit live-policy opt-in. A live loopback HTTP
+	// listener remains available to the bearer-authenticated CLI only.
+	BrowserSessions         bool   `json:"browser_sessions"`
+	OwnerUID                int    `json:"owner_uid"`
+	Target                  string `json:"target"`
+	Environment             string `json:"environment"`
+	ReferenceRoot           string `json:"reference_root"`
+	ModelRoot               string `json:"model_root"`
+	CompilerCacheRoot       string `json:"compiler_cache_root"`
+	ShaderCacheRoot         string `json:"shader_cache_root"`
+	HostSocket              string `json:"host_socket"`
+	WorkerSocket            string `json:"worker_socket"`
+	ClientBaseURL           string `json:"client_base_url"`
+	QueueDepth              int    `json:"queue_depth"`
+	OperationTimeoutSeconds int    `json:"operation_timeout_seconds"`
+}
+
+const (
+	LiveBrowserSessionCookie   = "__Host-bridge_session_v2"
+	DemoBrowserSessionCookie   = "bridge_demo_session_v2"
+	LegacyBrowserSessionCookie = "bridge_session"
+	LiveBrowserSessionPurpose  = "live-browser-v2"
+	DemoBrowserSessionPurpose  = "demo-browser-v2"
+)
+
+// BrowserSessionsEnabled separates disposable HTTP demo sessions from live
+// management sessions. Live browser sessions require the explicit policy flag.
+func (c Config) BrowserSessionsEnabled() bool {
+	return c.Mode == "demo" || c.BrowserSessions
+}
+
+// BrowserSessionCookieName separates live and demo cookie policies. Authentication
+// also checks BrowserSessionPurpose: changing a cookie name alone cannot revoke
+// a captured pre-upgrade session token.
+func (c Config) BrowserSessionCookieName() string {
+	if c.Mode == "live" {
+		return LiveBrowserSessionCookie
+	}
+	return DemoBrowserSessionCookie
+}
+
+func (c Config) BrowserSessionPurpose() string {
+	if c.Mode == "live" {
+		return LiveBrowserSessionPurpose
+	}
+	return DemoBrowserSessionPurpose
 }
 
 func Decode(b []byte, v any) error {
@@ -209,6 +243,17 @@ func (c Config) Validate() error {
 	}
 	if u.Scheme == "https" && (c.TLSCertFile == "" || c.TLSKeyFile == "") {
 		return errors.New("HTTPS requires certificate and key files")
+	}
+	if c.Mode == "live" && c.BrowserSessions {
+		// Cookies are host-scoped, not port-scoped. This is an administrator
+		// acknowledgement that the DNS management identity and every HTTPS
+		// service on it are within the same trusted management boundary.
+		if u.Scheme != "https" || c.TLSCertFile == "" || c.TLSKeyFile == "" {
+			return errors.New("live browser sessions require HTTPS with certificate and key files")
+		}
+		if host := u.Hostname(); host == "" || !strings.Contains(host, ".") || strings.EqualFold(host, "localhost") || net.ParseIP(host) != nil {
+			return errors.New("live browser sessions require a dedicated trusted DNS management hostname, not localhost, a single-label host or an IP literal")
+		}
 	}
 	if c.Mode == "demo" {
 		if !ip.IsLoopback() {
