@@ -2,13 +2,21 @@
 
 ## CI boundary
 
-Main pushes and pull requests run Ubuntu, macOS and Arch userspace checks.
+Main pushes and pull requests run one parallel Ubuntu, macOS and Arch test matrix.
 Only a newly created stable `vMAJOR.MINOR.PATCH` tag builds package artifacts.
-The tag workflow waits for Ubuntu and macOS checks, then runs Arch checks and
-`makepkg`. Cross-platform archives also depend on the Arch job succeeding.
+After tag validation, all three environments can start together. Separate
+cross-platform archive and Arch-package jobs each wait for the complete matrix
+to pass, then can run independently. Main/PR runs skip both packaging jobs.
 Neither workflow installs Bridge, starts its services or publishes a release.
 
-`.github/workflows/arch.yml` owns the official Arch image digest. The image is
+`.github/workflows/ci.yml` owns the matrix and packaging jobs, shared by the
+main/PR and tag entry workflows. Its `arch-container` YAML anchor supplies one
+image/resource definition to the Arch test row and Arch package job. Ubuntu
+and macOS rows use an empty container value and run on their native runners.
+Arch-only setup stays conditional in the matrix. A fresh Arch package job
+prepares its own isolated container; no filesystem state is shared between jobs.
+
+The Arch image is
 the 2026-09-07 `base-devel` build, verified against the official registry on
 2026-09-08. `scripts/ci-arch-setup.sh` selects the complete 2026-09-07 Arch Linux
 Archive snapshot. It initializes the image's package keyring, retains signature
@@ -28,6 +36,10 @@ does not qualify kernel behavior, service sandboxing, GPU access, handover,
 worker cgroups, K3s or model performance. Follow [QUALIFICATION.md](QUALIFICATION.md)
 on the actual workstation. A blocked container sandbox check must remain a
 reported limitation, not a reason to disable the sandbox.
+
+The shared matrix changes GitHub's displayed check names. If the owner has
+configured named required checks, review branch protection after the first CI
+run. These source changes do not modify repository settings.
 
 ## Generate and build a local package
 
@@ -99,6 +111,8 @@ Verified 2026-09-08:
 - [PKGBUILD manual](https://man.archlinux.org/man/PKGBUILD.5.en) and
   [makepkg manual](https://man.archlinux.org/man/makepkg.8.en).
 - [GitHub reusable workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows).
+- [Matrix jobs](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations)
+  and [YAML anchors](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#yaml-anchors-and-aliases).
 
 The checked-in digest, archive date, action SHAs and Go version are the pins.
 Rolling manual pages explain mechanisms; they are not immutable version pins.

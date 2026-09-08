@@ -26,25 +26,19 @@ func TestSourceCheckWorkflowOnlyChecksMainChanges(t *testing.T) {
 
 	assertReadOnlyPermissions(t, workflow)
 	jobs := mappingValue(t, workflow, "jobs")
-	arch := mappingValue(t, jobs, "arch")
-	if len(jobs.Content) != 4 || arch == nil || mappingValue(t, jobs, "check") == nil {
-		t.Fatal("source workflow must contain Arch and cross-platform check jobs only")
-	}
-	if got := scalar(t, mappingValue(t, arch, "uses")); got != "./.github/workflows/arch.yml" {
-		t.Fatalf("source Arch workflow = %q", got)
-	}
-	if mappingValue(t, arch, "with") != nil {
-		t.Fatal("source checks must use the reusable Arch workflow's empty version default")
-	}
 	check := mappingValue(t, jobs, "check")
-	assertCheckMatrix(t, check)
-	assertCheckSteps(t, check)
+	if len(jobs.Content) != 2 || check == nil {
+		t.Fatal("source workflow must call only the shared CI workflow")
+	}
+	assertCICaller(t, check)
+	if mappingValue(t, check, "with") != nil || mappingValue(t, check, "needs") != nil {
+		t.Fatal("source checks must run immediately with the empty version default")
+	}
 	assertPinnedActionsAndNoBypass(t, workflow)
 	assertNoSecretReferences(t, workflow)
-	assertNoPackageOrUpload(t, check)
 }
 
-func TestTagBuildWorkflowValidatesExactVersionAndPublishesOnlyArchives(t *testing.T) {
+func TestTagBuildWorkflowValidatesBeforeSharedCI(t *testing.T) {
 	workflow := readWorkflow(t, "build.yml")
 	trigger := mappingValue(t, workflow, "on")
 	if len(trigger.Content) != 2 {
@@ -62,10 +56,8 @@ func TestTagBuildWorkflowValidatesExactVersionAndPublishesOnlyArchives(t *testin
 	jobs := mappingValue(t, workflow, "jobs")
 	validate := mappingValue(t, jobs, "validate")
 	check := mappingValue(t, jobs, "check")
-	arch := mappingValue(t, jobs, "arch")
-	packageJob := mappingValue(t, jobs, "package")
-	if validate == nil || check == nil || arch == nil || packageJob == nil || len(jobs.Content) != 8 {
-		t.Fatal("tag build must contain validate, check, Arch, and package jobs only")
+	if validate == nil || check == nil || len(jobs.Content) != 4 {
+		t.Fatal("tag build must validate and then call the shared CI workflow only")
 	}
 	if !equalStrings(nodeStrings(t, mappingValue(t, check, "needs")), []string{"validate"}) {
 		t.Fatalf("tag check dependencies = %v, want validate", nodeStrings(t, mappingValue(t, check, "needs")))
@@ -88,60 +80,87 @@ func TestTagBuildWorkflowValidatesExactVersionAndPublishesOnlyArchives(t *testin
 		assertTagScript(t, script, version, false)
 	}
 
-	assertCheckMatrix(t, check)
-	assertCheckSteps(t, check)
-	if !sameStrings(nodeStrings(t, mappingValue(t, arch, "needs")), []string{"validate", "check"}) {
-		t.Fatalf("Arch dependencies = %v, want validate and check", nodeStrings(t, mappingValue(t, arch, "needs")))
-	}
-	if got := scalar(t, mappingValue(t, arch, "uses")); got != "./.github/workflows/arch.yml" {
-		t.Fatalf("tag Arch workflow = %q", got)
-	}
-	if got := scalar(t, mappingValue(t, mappingValue(t, arch, "with"), "version")); got != "${{ needs.validate.outputs.version }}" {
-		t.Fatalf("tag Arch version = %q", got)
-	}
-	if !sameStrings(nodeStrings(t, mappingValue(t, packageJob, "needs")), []string{"validate", "check", "arch"}) {
-		t.Fatalf("package dependencies = %v, want validate, check, and Arch", nodeStrings(t, mappingValue(t, packageJob, "needs")))
-	}
-	if mappingValue(t, packageJob, "if") != nil {
-		t.Fatal("package job must use GitHub's default successful-needs condition")
+	assertCICaller(t, check)
+	with := mappingValue(t, check, "with")
+	if with == nil || len(with.Content) != 2 || scalar(t, mappingValue(t, with, "version")) != "${{ needs.validate.outputs.version }}" {
+		t.Fatal("tag CI must receive only the validated version output")
 	}
 	assertPinnedActionsAndNoBypass(t, workflow)
 	assertNoSecretReferences(t, workflow)
 	assertNoReleasePublication(t, workflow)
-	assertPackageUpload(t, packageJob)
 }
 
-func TestArchReusableWorkflowIsolatedAndPackagesOnlyVersionedTags(t *testing.T) {
-	workflow := readWorkflow(t, "arch.yml")
+func assertCICaller(t *testing.T, job *yaml.Node) {
+	t.Helper()
+	if got := scalar(t, mappingValue(t, job, "uses")); got != "./.github/workflows/ci.yml" {
+		t.Fatalf("shared CI workflow = %q", got)
+	}
+	for _, forbidden := range []string{"if", "steps", "strategy", "secrets"} {
+		if mappingValue(t, job, forbidden) != nil {
+			t.Fatalf("CI caller must not override execution with %s", forbidden)
+		}
+	}
+}
+
+func TestUnifiedCheckMatrixGatesIndependentTagPackages(t *testing.T) {
+	workflow := readWorkflow(t, "ci.yml")
 	trigger := mappingValue(t, workflow, "on")
 	if len(trigger.Content) != 2 || mappingValue(t, trigger, "workflow_call") == nil {
-		t.Fatal("Arch workflow must be reusable only, with no automatic event trigger")
+		t.Fatal("shared CI must be reusable only, with no automatic event trigger")
 	}
 	inputs := mappingValue(t, mappingValue(t, trigger, "workflow_call"), "inputs")
 	version := mappingValue(t, inputs, "version")
 	if got := scalar(t, mappingValue(t, version, "default")); got != "" {
-		t.Fatalf("Arch version default = %q, want empty", got)
+		t.Fatalf("CI version default = %q, want empty", got)
 	}
 	if got := scalar(t, mappingValue(t, version, "required")); got != "false" {
-		t.Fatalf("Arch version required = %q, want false", got)
+		t.Fatalf("CI version required = %q, want false", got)
 	}
 	if got := scalar(t, mappingValue(t, version, "type")); got != "string" {
-		t.Fatalf("Arch version type = %q, want string", got)
+		t.Fatalf("CI version type = %q, want string", got)
 	}
 
 	assertReadOnlyPermissions(t, workflow)
 	jobs := mappingValue(t, workflow, "jobs")
-	if len(jobs.Content) != 2 {
-		t.Fatal("Arch reusable workflow must contain only its isolated check job")
+	if len(jobs.Content) != 6 {
+		t.Fatal("shared CI must contain one check matrix and two packaging jobs")
 	}
-	arch := mappingValue(t, jobs, "arch")
-	if arch == nil || scalar(t, mappingValue(t, arch, "runs-on")) != "ubuntu-24.04" {
-		t.Fatal("Arch job must run on Ubuntu 24.04")
+	check := mappingValue(t, jobs, "check")
+	if mappingValue(t, check, "needs") != nil || mappingValue(t, check, "if") != nil {
+		t.Fatal("all matrix rows must start without dependencies or conditional skipping")
 	}
-	assertArchContainer(t, mappingValue(t, arch, "container"))
+	archContainer := assertCheckMatrix(t, check)
+	assertCheckSteps(t, check)
+	assertNoPackageOrUpload(t, check)
+	for _, name := range []string{"package", "arch-package"} {
+		job := mappingValue(t, jobs, name)
+		if !equalStrings(nodeStrings(t, mappingValue(t, job, "needs")), []string{"check"}) {
+			t.Fatalf("%s must depend only on the complete check matrix, not the other package job", name)
+		}
+		// No status function overrides implicit success(): any failed or cancelled
+		// matrix row blocks both jobs. Main/PRs cannot package, even with an input.
+		const gate = "${{ inputs.version != '' && github.event_name == 'push' && github.ref == format('refs/tags/{0}', inputs.version) && github.event.created == true && github.event.deleted == false }}"
+		if got := scalar(t, mappingValue(t, job, "if")); got != gate {
+			t.Fatalf("%s new-tag gate = %q", name, got)
+		}
+		if scalar(t, mappingValue(t, job, "runs-on")) != "ubuntu-24.04" {
+			t.Fatalf("%s must run on Ubuntu 24.04", name)
+		}
+	}
+	packageJob := mappingValue(t, jobs, "package")
+	if mappingValue(t, packageJob, "container") != nil {
+		t.Fatal("cross-platform packaging must stay on its native runner")
+	}
+	assertPackageUpload(t, packageJob)
+	arch := mappingValue(t, jobs, "arch-package")
+	alias := mappingValue(t, arch, "container")
+	if alias == nil || alias.Kind != yaml.AliasNode || alias.Alias != archContainer {
+		t.Fatal("Arch packaging must reuse the matrix's exact image and resource pin")
+	}
 	assertArchSteps(t, arch)
 	assertPinnedActionsAndNoBypass(t, workflow)
 	assertNoSecretReferences(t, workflow)
+	assertNoReleasePublication(t, workflow)
 	assertArchSetupScript(t)
 	assertArchPackageScript(t)
 }
@@ -228,12 +247,38 @@ func assertReadOnlyPermissions(t *testing.T, workflow *yaml.Node) {
 	}
 }
 
-func assertCheckMatrix(t *testing.T, job *yaml.Node) {
+func assertCheckMatrix(t *testing.T, job *yaml.Node) *yaml.Node {
 	t.Helper()
-	matrix := mappingValue(t, mappingValue(t, job, "strategy"), "matrix")
-	if !sameStrings(nodeStrings(t, mappingValue(t, matrix, "os")), []string{"ubuntu-24.04", "macos-15"}) {
-		t.Fatalf("check matrix = %v, want Ubuntu 24.04 and macOS 15", nodeStrings(t, mappingValue(t, matrix, "os")))
+	strategy := mappingValue(t, job, "strategy")
+	if scalar(t, mappingValue(t, strategy, "fail-fast")) != "false" || mappingValue(t, strategy, "max-parallel") != nil {
+		t.Fatal("matrix must permit parallel diagnostics across every platform after a failure")
 	}
+	matrix := mappingValue(t, strategy, "matrix")
+	rows := mappingValue(t, matrix, "include")
+	if matrix == nil || len(matrix.Content) != 2 || rows == nil || rows.Kind != yaml.SequenceNode || len(rows.Content) != 3 {
+		t.Fatal("matrix must contain exactly three explicit platform rows")
+	}
+	want := map[string]string{"ubuntu": "ubuntu-24.04", "macos": "macos-15", "arch": "ubuntu-24.04"}
+	var archContainer *yaml.Node
+	for _, row := range rows.Content {
+		platform := scalar(t, mappingValue(t, row, "platform"))
+		runner, ok := want[platform]
+		if !ok || scalar(t, mappingValue(t, row, "runner")) != runner {
+			t.Fatalf("unknown, duplicate or incorrect platform row %q", platform)
+		}
+		delete(want, platform)
+		container := mappingValue(t, row, "container")
+		if platform == "arch" {
+			assertArchContainer(t, container)
+			archContainer = container
+		} else if scalar(t, container) != "" {
+			t.Fatalf("%s must run natively without a container", platform)
+		}
+	}
+	if scalar(t, mappingValue(t, job, "runs-on")) != "${{ matrix.runner }}" || scalar(t, mappingValue(t, job, "container")) != "${{ matrix.container }}" {
+		t.Fatal("check execution must select the runner and container from the matrix")
+	}
+	return archContainer
 }
 
 func assertCheckSteps(t *testing.T, job *yaml.Node) {
@@ -242,7 +287,10 @@ func assertCheckSteps(t *testing.T, job *yaml.Node) {
 	if steps == nil || steps.Kind != yaml.SequenceNode {
 		t.Fatal("check job lacks steps")
 	}
-	checkoutFound, gatesFound := false, false
+	checkoutFound, gatesFound, setupFound, archSetupFound := false, false, false, false
+	if scalar(t, mappingValue(t, mappingValue(t, mappingValue(t, job, "defaults"), "run"), "shell")) != "bash" {
+		t.Fatal("matrix script needs Bash on native and container rows")
+	}
 	for _, step := range steps.Content {
 		if uses := mappingValue(t, step, "uses"); uses != nil && strings.HasPrefix(scalar(t, uses), "actions/checkout@") {
 			checkoutFound = true
@@ -250,19 +298,74 @@ func assertCheckSteps(t *testing.T, job *yaml.Node) {
 				t.Fatalf("checkout persist-credentials = %q, want false", got)
 			}
 		}
-		if run := mappingValue(t, step, "run"); run != nil && strings.HasPrefix(scalar(t, run), "make ") {
-			fields := strings.Fields(scalar(t, run))
-			want := []string{"toolchain", "fmt", "vet", "test", "race", "generated", "openapi", "manifests", "security"}
-			if sameStrings(fields[1:], want) {
-				gatesFound = true
+		if uses := mappingValue(t, step, "uses"); uses != nil && strings.HasPrefix(scalar(t, uses), "actions/setup-go@") {
+			setupFound = true
+			with := mappingValue(t, step, "with")
+			if scalar(t, mappingValue(t, with, "cache")) != "${{ matrix.platform != 'arch' }}" || scalar(t, mappingValue(t, with, "go-version-file")) != ".go-version" {
+				t.Fatal("matrix must retain the exact Go version and disable Arch's root-user cache")
+			}
+		}
+		if run := mappingValue(t, step, "run"); run != nil && scalar(t, run) == "bash scripts/ci-arch-setup.sh" {
+			archSetupFound = true
+			if scalar(t, mappingValue(t, step, "if")) != "${{ matrix.platform == 'arch' }}" {
+				t.Fatal("pacman/container setup must only run in the Arch row")
+			}
+		}
+		if id := mappingValue(t, step, "id"); id != nil && scalar(t, id) == "checks" {
+			gatesFound = true
+			if mappingValue(t, step, "if") != nil || scalar(t, mappingValue(t, mappingValue(t, step, "env"), "BRIDGE_CHECK_PLATFORM")) != "${{ matrix.platform }}" {
+				t.Fatal("unconditional checks must receive the platform as environment data")
+			}
+			script := scalar(t, mappingValue(t, step, "run"))
+			assertShellSyntax(t, script)
+			for _, platform := range []string{"ubuntu", "macos", "arch"} {
+				for _, exitCode := range []string{"0", "17"} {
+					assertMatrixCheckScript(t, script, platform, exitCode)
+				}
 			}
 		}
 	}
 	if !checkoutFound {
 		t.Fatal("check job must use checkout with persisted credentials disabled")
 	}
-	if !gatesFound {
-		t.Fatal("check job must run all source gates, including test and race")
+	if !gatesFound || !setupFound || !archSetupFound {
+		t.Fatal("check job must set up each environment and run all source gates")
+	}
+}
+
+func assertMatrixCheckScript(t *testing.T, script, platform, exitCode string) {
+	t.Helper()
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	stubs := map[string]string{
+		"make":    "printf 'make' >> \"$BRIDGE_TEST_CALLS\"\nprintf ' %s' \"$@\" >> \"$BRIDGE_TEST_CALLS\"\nprintf '\\n' >> \"$BRIDGE_TEST_CALLS\"\nexit \"$BRIDGE_TEST_EXIT\"\n",
+		"chown":   "[[ $# == 3 && $1 == -R && $2 == bridge-ci:bridge-ci && $3 == \"$GITHUB_WORKSPACE\" ]] || exit 98\nprintf 'chown\\n' >> \"$BRIDGE_TEST_CALLS\"\n",
+		"runuser": "[[ $1 == -u && $2 == bridge-ci && $3 == -- ]] || exit 99\nprintf 'runuser\\n' >> \"$BRIDGE_TEST_CALLS\"\nshift 3\nexec \"$@\"\n",
+	}
+	for name, contents := range stubs {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/bash\nset -euo pipefail\n"+contents), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "/bin/bash", "-e", "-o", "pipefail", "-c", script)
+	cmd.Dir = dir
+	cmd.Env = []string{"PATH=" + dir + ":/usr/bin:/bin", "BRIDGE_CHECK_PLATFORM=" + platform, "GITHUB_WORKSPACE=" + filepath.Join(dir, "checkout with spaces"), "BRIDGE_TEST_CALLS=" + log, "BRIDGE_TEST_EXIT=" + exitCode}
+	output, err := cmd.CombinedOutput()
+	if (exitCode == "0" && err != nil) || (exitCode == "17" && (cmd.ProcessState == nil || cmd.ProcessState.ExitCode() != 17)) {
+		t.Fatalf("%s checks did not propagate exit %s: %v: %s", platform, exitCode, err, output)
+	}
+	got, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "make toolchain fmt vet test race generated openapi manifests security\n"
+	if platform == "arch" {
+		want = "chown\nrunuser\n" + want
+	}
+	if string(got) != want {
+		t.Fatalf("%s check calls = %q, want %q", platform, got, want)
 	}
 }
 
@@ -287,9 +390,12 @@ func assertArchSteps(t *testing.T, job *yaml.Node) {
 	if steps == nil || steps.Kind != yaml.SequenceNode {
 		t.Fatal("Arch job lacks steps")
 	}
-	checkout, setup, sourceChecks, packageStep := false, false, false, false
+	checkout, setup, workspace, packageStep := false, false, false, false
 	uploads := 0
 	for _, step := range steps.Content {
+		if mappingValue(t, step, "if") != nil {
+			t.Fatal("Arch packaging steps must not skip checks inside the gated job")
+		}
 		if uses := mappingValue(t, step, "uses"); uses != nil {
 			switch {
 			case strings.HasPrefix(scalar(t, uses), "actions/checkout@"):
@@ -304,32 +410,38 @@ func assertArchSteps(t *testing.T, job *yaml.Node) {
 				}
 			case strings.HasPrefix(scalar(t, uses), "actions/upload-artifact@"):
 				uploads++
-				if got := scalar(t, mappingValue(t, step, "if")); got != "${{ inputs.version != '' }}" {
-					t.Fatalf("Arch upload condition = %q", got)
+				if !packageStep {
+					t.Fatal("Arch upload must follow the package script and its checksum verification")
 				}
 				assertArchPackageUpload(t, mappingValue(t, step, "with"))
 			}
 		}
 		if run := mappingValue(t, step, "run"); run != nil {
 			script := scalar(t, run)
-			if strings.Contains(script, "runuser -u bridge-ci -- env PATH=\"$PATH\" make toolchain fmt vet test race generated openapi manifests security") {
-				sourceChecks = true
+			if strings.Contains(script, "chown -R bridge-ci:bridge-ci \"$GITHUB_WORKSPACE\"") {
+				workspace = true
 			}
 			if strings.Contains(script, "bash scripts/ci-arch-package.sh") {
 				packageStep = true
-				if got := scalar(t, mappingValue(t, step, "if")); got != "${{ inputs.version != '' }}" {
-					t.Fatalf("Arch package condition = %q", got)
+				if !workspace || script != "runuser -u bridge-ci -- env PATH=\"$PATH\" BRIDGE_VERSION=\"$BRIDGE_VERSION\" bash scripts/ci-arch-package.sh" {
+					t.Fatal("Arch package build must use the prepared unprivileged workspace")
+				}
+				if scalar(t, mappingValue(t, mappingValue(t, step, "env"), "BRIDGE_VERSION")) != "${{ inputs.version }}" {
+					t.Fatal("Arch package version must be passed as environment data")
 				}
 			}
 		}
 	}
-	if !checkout || !setup || !sourceChecks || !packageStep || uploads != 1 {
-		t.Fatalf("Arch steps incomplete: checkout=%t setup=%t checks=%t package=%t uploads=%d", checkout, setup, sourceChecks, packageStep, uploads)
+	if !checkout || !setup || !workspace || !packageStep || uploads != 1 {
+		t.Fatalf("Arch steps incomplete: checkout=%t setup=%t workspace=%t package=%t uploads=%d", checkout, setup, workspace, packageStep, uploads)
 	}
 }
 
 func assertArchPackageUpload(t *testing.T, with *yaml.Node) {
 	t.Helper()
+	if scalar(t, mappingValue(t, with, "name")) != "spry-bridge-arch-${{ inputs.version }}" {
+		t.Fatal("Arch artifact name must bind the validated version")
+	}
 	const expected = "dist/arch/PKGBUILD\ndist/arch/spry-bridge-*-src.tar.gz\ndist/arch/spry-ai-workstation-bridge-*.pkg.tar.zst\ndist/arch/SHA256SUMS"
 	if got := strings.TrimSpace(scalar(t, mappingValue(t, with, "path"))); got != expected {
 		t.Fatalf("Arch artifact paths = %q", got)
@@ -441,7 +553,7 @@ func assertPinnedActionsAndNoBypass(t *testing.T, root *yaml.Node) {
 		if node.Kind == yaml.MappingNode {
 			if uses := mappingValue(t, node, "uses"); uses != nil {
 				value := scalar(t, uses)
-				if value != "./.github/workflows/arch.yml" && !pinned.MatchString(value) {
+				if value != "./.github/workflows/ci.yml" && !pinned.MatchString(value) {
 					t.Fatalf("external action must be pinned to a full commit SHA: %q", value)
 				}
 			}
@@ -592,6 +704,9 @@ func assertPackageUpload(t *testing.T, job *yaml.Node) {
 			t.Fatalf("artifact upload step %d must follow checksum verification", index)
 		}
 		with := mappingValue(t, step, "with")
+		if scalar(t, mappingValue(t, with, "name")) != "spry-bridge-${{ inputs.version }}" {
+			t.Fatal("archive artifact name must bind the validated version")
+		}
 		if got := strings.TrimSpace(scalar(t, mappingValue(t, with, "path"))); got != expected {
 			t.Fatalf("artifact paths = %q, want only release archives and SHA256SUMS", got)
 		}

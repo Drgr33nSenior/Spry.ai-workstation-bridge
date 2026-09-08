@@ -1,0 +1,141 @@
+name: checks and packaging
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Validated stable tag; empty runs checks without packaging
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check (${{ matrix.platform }})
+    strategy:
+      # Finish every environment's diagnostics even if another row fails.
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu
+            runner: ubuntu-24.04
+            container: ''
+          - platform: macos
+            runner: macos-15
+            container: ''
+          - platform: arch
+            runner: ubuntu-24.04
+            # Single image/resource pin shared with the Arch packaging job.
+            container: &arch-container
+              image: quay.io/archlinux/archlinux@sha256:54c4df72eb71a3cad762b0189dd28ac21a4cea4af991b1cec5650d3f14b9dd01
+              options: --cpus 2 --memory 6g --pids-limit 1024
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prepare isolated Arch userspace
+        if: ${{ matrix.platform == 'arch' }}
+        run: bash scripts/ci-arch-setup.sh
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: .go-version
+          cache: ${{ matrix.platform != 'arch' }}
+      - name: Run source and race checks
+        id: checks
+        env:
+          BRIDGE_CHECK_PLATFORM: ${{ matrix.platform }}
+        run: |
+          check_targets=(toolchain fmt vet test race generated openapi manifests security)
+          if [[ "$BRIDGE_CHECK_PLATFORM" == arch ]]; then
+            chown -R bridge-ci:bridge-ci "$GITHUB_WORKSPACE"
+            runuser -u bridge-ci -- env PATH="$PATH" make "${check_targets[@]}"
+          else
+            make "${check_targets[@]}"
+          fi
+      # Service runtime validation needs prepared system users, root-owned
+      # policies and actual Linux visibility. CI does not install those.
+      - run: echo 'NOT RUN — installed systemd, Arch kernel, K3s and target hardware qualification'
+
+  package:
+    needs: check
+    if: ${{ inputs.version != '' && github.event_name == 'push' && github.ref == format('refs/tags/{0}', inputs.version) && github.event.created == true && github.event.deleted == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: .go-version
+          cache: true
+      - name: Build Linux and macOS archives
+        run: make package
+      - name: Verify packaged archives
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+      - name: Upload versioned build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: spry-bridge-${{ inputs.version }}
+          path: |
+            dist/spry-bridge-linux-amd64.tar.gz
+            dist/spry-bridge-darwin-arm64.tar.gz
+            dist/spry-bridge-darwin-amd64.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+  arch-package:
+    needs: check
+    if: ${{ inputs.version != '' && github.event_name == 'push' && github.ref == format('refs/tags/{0}', inputs.version) && github.event.created == true && github.event.deleted == false }}
+    runs-on: ubuntu-24.04
+    container: *arch-container
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prepare isolated Arch userspace
+        run: bash scripts/ci-arch-setup.sh
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: .go-version
+          cache: false
+      - name: Prepare unprivileged package workspace
+        run: |
+          chown -R bridge-ci:bridge-ci "$GITHUB_WORKSPACE"
+      - name: Build and inspect the Arch package for a new version tag only
+        env:
+          BRIDGE_VERSION: ${{ inputs.version }}
+        run: runuser -u bridge-ci -- env PATH="$PATH" BRIDGE_VERSION="$BRIDGE_VERSION" bash scripts/ci-arch-package.sh
+      - name: Upload versioned Arch package and verified source recipe
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: spry-bridge-arch-${{ inputs.version }}
+          path: |
+            dist/arch/PKGBUILD
+            dist/arch/spry-bridge-*-src.tar.gz
+            dist/arch/spry-ai-workstation-bridge-*.pkg.tar.zst
+            dist/arch/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+      - run: echo 'NOT RUN — installed systemd, Arch kernel, K3s and target hardware qualification'

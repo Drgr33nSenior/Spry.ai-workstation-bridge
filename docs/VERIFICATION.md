@@ -23,7 +23,37 @@ change, large model download, workstation build recipe, reboot, publication or
 Git staging/commit/push was performed. Tests used isolated temporary state,
 generated credentials and ephemeral loopback listeners, not user credentials.
 
-## Arch CI and package follow-up
+## Unified matrix follow-up
+
+Verified 2026-09-08 from the owner's clean `221e124` baseline. Both entry
+workflows now call `.github/workflows/ci.yml`. It runs one parallel Ubuntu,
+macOS and Arch test matrix, then two independent tag-only packaging jobs.
+Each packaging job requires the entire matrix to succeed. The previous
+Arch-specific reusable workflow was replaced; image/tool pins and packaging
+scripts were not changed.
+
+| Command/check | Observed result |
+|---|---|
+| `make check` on macOS arm64 | PASS: formatting, vet, unit/integration tests, race, generated API, OpenAPI, manifests, local builds and vulnerability checks; existing platform exclusions retained |
+| `go test ./internal/integration -run 'Test(SourceCheck\|TagBuild\|UnifiedCheck)' -count=1` | PASS: matrix rows, native/container selection, shared Arch pin, complete-matrix dependencies, independent packaging and new-tag-only artifact gates |
+| Actual matrix check script with fixture `make`, `runuser` and `chown` commands | PASS for all three platform values, both success and failure exit codes, and a workspace path containing spaces; no privileged command was executed |
+| `actionlint .github/workflows/check.yml .github/workflows/build.yml .github/workflows/ci.yml` | PASS with actionlint 1.7.12, including matrix expressions and the YAML container alias |
+| `make arch-source VERSION=v1.0.0` and checksum verification from `dist/arch` | PASS; source archive contains the two entry workflows and `ci.yml`, not the removed `arch.yml` |
+| `git diff --check` and documentation audits | PASS; new `ci.yml` inspected directly as well as tracked diffs |
+
+The script fixtures validate command selection and failure propagation, not
+GitHub scheduling, runner provisioning or Docker startup. No remote workflow,
+native Arch package build, systemd/hardware test, installation or publication
+was run for this refactor. The previous Arch sandbox/disk-space limitations
+below remain unresolved and were not retried. Application/browser code, the
+PKGBUILD, dependencies and installer were unchanged. No Git state was mutated.
+
+Required-check display paths change with the reusable matrix. The owner must
+review any named branch-protection checks after its first GitHub run; repository
+settings were not read or modified. README and the packaging guide now separate
+parallel checks, dependent packaging and target qualification explicitly.
+
+## Earlier Arch CI and package follow-up
 
 Verified 2026-09-08 in the attached GoLand checkout. This follow-up began from
 the owner's clean `624d3d9` commit. It changes CI, source packaging, focused tests
@@ -31,7 +61,7 @@ and documentation only. The API contract, application runtime, installer and
 existing deployment units were not changed. No Git staging, commit, tag, push,
 remote workflow dispatch or package/service installation was performed.
 
-Main pushes and PRs now include a reusable Arch userspace check. Stable-tag
+At this stage, main pushes and PRs included a reusable Arch userspace check. Stable-tag
 artifacts require Ubuntu, macOS and Arch success. The tag-only Arch step builds
 a source-based pacman package and uploads its source, concrete PKGBUILD and
 checksums with seven-day retention. See [ARCH-PACKAGING.md](ARCH-PACKAGING.md).

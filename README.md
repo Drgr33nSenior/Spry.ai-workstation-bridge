@@ -89,8 +89,15 @@ in `go.mod`/`go.sum`; the four runtime entry points use the Go standard library.
 | Pull request targeting `main` | Same checks | None |
 | Push a new stable version tag, such as `v1.0.0` | Validate the tag, then run the same checks | Build and upload only after Ubuntu, macOS and Arch checks pass |
 
-The reusable Arch job runs an official digest-pinned `base-devel` container on
-an Ubuntu amd64 runner. Arch packages come from the dated 2026-09-07 archive;
+Both workflows call `.github/workflows/ci.yml`, which owns one parallel test
+matrix for Ubuntu, macOS and Arch. Each row runs the same checks. On valid new
+tags, separate archive and Arch-package jobs each wait for the entire matrix
+to succeed; neither packaging job waits for the other. Main/PR runs skip both
+packaging jobs. A failed row does not cancel the other rows' diagnostics.
+
+Only the Arch matrix row uses the official digest-pinned `base-devel` container
+on an Ubuntu amd64 runner; Ubuntu and macOS run natively. The Arch package job
+reuses that container definition. Arch packages come from the dated 2026-09-07 archive;
 Go comes from the exact `.go-version` through the pinned setup action. Tests and
 package builds run as an unprivileged container user. This checks Arch userspace,
 not the Arch kernel, installed systemd services, K3s or workstation hardware.
@@ -136,13 +143,17 @@ and executes the actual tag-validation script with accepted and rejected inputs.
 Full workflow syntax validation was also run with `actionlint` **1.7.12**:
 
 ```sh
-actionlint .github/workflows/check.yml .github/workflows/build.yml .github/workflows/arch.yml
+actionlint .github/workflows/check.yml .github/workflows/build.yml .github/workflows/ci.yml
 ```
 
 Release tags identify application builds. They do not automatically change the
 OpenAPI format version, API contract version or helper protocol version. Keep
 `api/openapi.json` generated from `internal/contract`; CI checks that it agrees
 with its canonical source.
+
+If branch protection requires individual check names, review those settings
+after the first run: the shared matrix changes the displayed job paths. This
+repository change does not update GitHub branch protection or bypass its gates.
 
 ## Live operation
 
