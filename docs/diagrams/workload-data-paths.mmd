@@ -1,0 +1,48 @@
+---
+config:
+  flowchart:
+    curve: stepAfter
+---
+flowchart TB
+  accTitle: AI, retrieval and gaming workload data paths
+  accDescr: All source-defined application deployments start at zero replicas and require qualification. Open WebUI calls SGLang; optional CPU embeddings and Chroma run inside WebUI. Qwen Code, DSH and Hermes run on the client, not in K3s. Gaming is optional and admission-blocked. PVC capacities are requests, not quotas.
+
+  chat["Chat browser<br/>Private access must be configured"]
+  agents["Client-side Qwen Code / DSH / Hermes<br/>Owner-authorized API port-forward"]
+  player["Moonlight client<br/>Steam Remote Play is an alternative"]
+
+  subgraph cluster["K3s · source view · PVC sizes are requests, not quotas"]
+    ingress["Traefik<br/>DNS / TLS / external exposure gated"]
+    subgraph namespace["ai-home-lab · replicas = 0 · qualify first · GPU workloads are not simultaneous allocations"]
+      subgraph inference["AI chat and inference · logical group"]
+        subgraph webuipod["Open WebUI deployment"]
+          webui["Chat UI + backend<br/>TCP 8080"]
+          rag["Opt-in RAG in the same container<br/>CPU embeddings + embedded Chroma<br/>No separate database service"]
+        end
+        sglang["SGLang · TCP 30000/v1<br/>Default overlay: 2 GPUs<br/>24 CPUs / 38 GiB host RAM"]
+        model[("llm-models · 200 GiB RO<br/>sglang-hf-cache · 16 GiB")]
+        chatdata[("Base webui-data · 20 GiB<br/>OR isolated RAG pilot claims<br/>20 GiB data + 3 GiB models RO")]
+      end
+      creative["SwarmUI + in-pod ComfyUI<br/>1 GPU · no allowed ingress yet"]
+      gaming["Optional Steam Headless + Sunshine<br/>1 GPU per selected session<br/>Admission / input / exposure BLOCKED"]
+      creativedata[("creative-models · 500 GiB<br/>Models / data / outputs")]
+      gamedata[("Selected gaming-home · 500 GiB<br/>Games / shader cache / pairing")]
+
+      webui -->|"OpenAI-compatible HTTP API"| sglang
+      webui -.->|"optional overlay adds retrieval"| rag
+      webui -->|"selected persistent data mount"| chatdata
+      sglang -->|"read models / write caches"| model
+      creative -->|"persistent files"| creativedata
+      gaming -->|"persistent home"| gamedata
+    end
+    ingress -->|"NetworkPolicy allows WebUI only"| webui
+  end
+
+  chat -.->|"owner-configured HTTPS exposure"| ingress
+  agents -->|"loopback tunnel via Kubernetes API · not Bridge"| sglang
+  player -.->|"separate L4 streaming path · not Traefik"| gaming
+
+  classDef storage fill:#e9f5ef,stroke:#39745a,color:#173c2c
+  classDef gated fill:#fff7e6,stroke:#a56c12,color:#553609,stroke-dasharray:5 4
+  class model,chatdata,creativedata,gamedata storage
+  class rag,gaming,ingress,creative gated

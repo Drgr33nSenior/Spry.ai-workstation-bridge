@@ -230,8 +230,10 @@ docker://docker.io/josh5/steam-headless@sha256:f6bd0f5d88c6a5160fe765f61af9b3370
 oci-archive:/absolute/new-context/base.oci`. Resolve/download the complete apt
 closure using the same base and the original signed repository policy. Do not
 disable apt authentication or substitute a newer package to complete staging.
-Hash the entire prepared context with `bridge-hostd --manifest`, review it,
-and install it read-only before setting the three `sunshine_*` worker fields.
+From the Bridge source checkout on that staging machine, hash the entire
+prepared context with
+`go run ./cmd/bridge-hostd --manifest /absolute/prepared-context`. Review it and
+install it read-only before setting the three `sunshine_*` worker fields.
 
 The embedded Containerfile uses `apt-get --no-download` and preserves all fixed
 package versions. Buildah imports only that OCI archive, builds with

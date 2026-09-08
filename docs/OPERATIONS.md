@@ -24,7 +24,8 @@ The bundle must include `bin/workstationctl`, `lib/common.sh`, all sourced
 `lib/workstation/*.sh`, `versions.lock`, and supporting files required by the
 selected operations. Keep its directory tree root-owned and non-writable by the
 API or worker. Generate its exact manifest with
-`bridge-hostd --manifest /absolute/prepared/runtime-bundle`. This is an inspection
+`./bin/bridge-hostd --manifest /absolute/prepared/runtime-bundle` from the Bridge
+checkout after the local build. This is an inspection
 command; a printed digest is not approval or a signed-package provenance claim.
 Install only after checking the prepared bundle against reviewed source and the
 owner's package/signature process.
@@ -33,8 +34,10 @@ The separate read-only reference tree for catalog import must contain the
 reviewed `versions.lock`, workstation example config, selected deployment
 profiles and RAG integrity files used by `internal/catalog`. Reference and runtime
 trees can be packaged from the same reviewed source revision, but must not be a
-writable development checkout. Both repositories had no HEAD during this task;
-source hashes, not invented commit IDs, identify the installer evidence.
+writable development checkout. Record the reviewed source revision and the
+content hashes of the prepared files. Initial implementation evidence predates
+the repositories' first commits and uses content hashes; that historical limit
+does not remove the need to record a revision for a later installation.
 
 Resolve UIDs on the target. The examples' numeric values are placeholders, not
 the target inventory. `bridge` runs the controller, `bridge-worker` runs builds,
@@ -77,7 +80,7 @@ refused. Do not relabel a target to bypass a source restriction. Import the
 reviewed initial managed fields while the service is stopped:
 
 ```sh
-bridged --config /etc/bridge/server.json --import-source /absolute/reviewed-management.json
+/usr/lib/bridge/bridged --config /etc/bridge/server.json --import-source /absolute/reviewed-management.json
 bridgectl admin bootstrap --config /etc/bridge/server.json --output /absolute/owner-private/bridge-owner.token --ttl 24h
 ```
 

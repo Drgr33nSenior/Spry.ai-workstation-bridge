@@ -10,6 +10,9 @@ endpoints or the installer. Live adapters use the reviewed installer contracts.
 Workload qualification remains an independent owner-controlled prerequisite.
 This repository does not install services or expose public management ingress.
 
+See the [architecture diagrams](docs/STACK.md) for the private management plane,
+the K3s platform and the AI, RAG and gaming workload paths.
+
 Live browser management requires explicit `browser_sessions: true` and a
 dedicated trusted HTTPS hostname. The live loopback HTTP example is CLI-only;
 demo HTTP below is separate. See the [remediation and migration guide](docs/REMEDIATION.md)

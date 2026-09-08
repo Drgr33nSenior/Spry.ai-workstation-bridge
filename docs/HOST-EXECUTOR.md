@@ -33,7 +33,7 @@ Generate the manifest locally without installing or approving anything:
 ```sh
 go run ./cmd/bridge-hostd --manifest /absolute/prepared/runtime-bundle
 # On the Linux target, hashes files only; it does not execute these programs.
-bridge-hostd --system-manifest
+/usr/lib/bridge/bridge-hostd --system-manifest
 ```
 
 Review this output, package provenance, and the owner-resolved service UID before

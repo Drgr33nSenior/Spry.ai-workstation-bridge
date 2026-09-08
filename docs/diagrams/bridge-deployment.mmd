@@ -1,0 +1,30 @@
+flowchart TB
+  accTitle: Bridge private management deployment
+  accDescr: Source-defined architecture, not discovered installation. Owner clients access bridged on the Arch host outside K3s. A root helper controls reviewed cluster operations; a separate unprivileged worker builds offline artifacts. Compute traffic does not pass through Bridge.
+
+  owner["Owner browser / bridgectl<br/>Private LAN or owner-managed VPN"]
+
+  subgraph host["SOURCE VIEW · ARCH WORKSTATION — Bridge runs outside K3s"]
+    direction TB
+    api["bridged · unprivileged<br/>HTTPS API + embedded web UI<br/>Plans, operations and sessions"]
+    store[("Bridge persistence<br/>Bounded JSON state + managed source<br/>/var/lib/bridge")]
+    helper["bridge-hostd · root<br/>Allowlisted executor<br/>Independent recovery journal"]
+    worker["bridge-worker · separate UID<br/>Named offline recipes<br/>Filesystem + cgroup limits"]
+    runtime["Installed workstationctl runtime<br/>Shared session lock<br/>GPU release / restore checks"]
+    cluster["K3s · single-node workload plane<br/>Restricted helper identity<br/>No automatic qualification"]
+    outputs[("Build artifacts + persistent caches<br/>Native llama.cpp HIP / Vulkan<br/>No automatic deployment")]
+
+    api -->|"durable intent / source"| store
+    api -->|"Unix socket · peer UID checked"| helper
+    api -->|"Unix socket · peer UID checked"| worker
+    helper -->|"fixed operations / verified files"| runtime
+    helper -->|"TLS API · scoped RBAC"| cluster
+    worker -->|"bounded builds"| outputs
+  end
+
+  owner -->|"Dedicated HTTPS hostname · authenticated"| api
+
+  classDef authority fill:#fff0eb,stroke:#ad5439,color:#47251a
+  classDef storage fill:#e9f5ef,stroke:#39745a,color:#173c2c
+  class helper,runtime authority
+  class store,outputs storage

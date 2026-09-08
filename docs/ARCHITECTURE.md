@@ -1,5 +1,9 @@
 # Architecture and ownership
 
+For deployment boundaries, K3s components and application data paths, see the
+[workstation architecture diagrams](STACK.md). Those views describe reviewed
+source configuration, not a discovered running installation.
+
 Bridge is one Go module with four runtime entry points. `bridged` owns the API,
 browser sessions, plans, operation coordination and embedded assets. `bridgectl`
 uses that API and provides explicit offline administration and client-local
@@ -30,12 +34,15 @@ Initial migration requires the owner to compare
 `deployment/management.initial.example.json` with the installed selected profile,
 resource plan and existing manifest. Preserve model revision and quantization;
 the example is a single-GPU configuration, not discovered target inventory.
-Use `bridged --config /etc/bridge/server.json --import-source /absolute/reviewed.json`
+Use `/usr/lib/bridge/bridged --config /etc/bridge/server.json --import-source /absolute/reviewed.json`
 with the service stopped. It computes the content revision and refuses overwrite.
 Leave all unrelated installer fields under their current authority. Applying an
-old Kustomize profile later can overwrite migrated live fields; re-import/re-plan
-deliberately. UID, resourceVersion, hardware and qualification checks prevent
-Bridge from silently taking over a replaced workload.
+old Kustomize profile later can overwrite migrated live fields. Compare the
+actual deployment with an export of the current managed source, then create a
+new reviewed plan for the intended fields. Import is initialization-only; it
+does not overwrite an existing managed source. UID, resourceVersion, hardware
+and qualification checks prevent Bridge from silently taking over a replaced
+workload.
 
 Each plan binds target, actor, source revision, desired typed values and observed
 reference/boot preconditions. It expires after ten minutes. Applying requires the
@@ -59,8 +66,9 @@ do not become in-memory truth. A persistence error poisons mutation admission
 until an owner inspects and restarts from durable state. The controller retains
 2000 audit entries, up to 200 live/recent plans, 500 operation records and 128
 credentials/browser sessions. Successful/failed/cancelled operations age out
-after 30 days; uncertain operations are never pruned. Capacity exhaustion refuses
-new work. No automatic deletion of model/build directories exists.
+after 30 days unless retained as ancestors of a retained recovery attempt.
+Uncertain operations are never pruned. Capacity exhaustion refuses new work.
+No automatic deletion of model/build directories exists.
 
 Schema version 1 is explicit. Unknown versions refuse startup; there is no
 implicit destructive migration. A future schema change needs a tested offline
