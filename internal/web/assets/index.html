@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Spry.ai Workstation Bridge</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<a class="skip" href="#main">Skip to management</a>
+<header><a class="brand" href="#serving">Spry.ai <span>Workstation Bridge</span></a><div class="identity"><span id="mode">Private management</span><span id="identity"></span><button id="logout" hidden>Log out</button></div></header>
+<div id="notice" role="status" aria-live="polite"></div>
+<section id="login" class="login" aria-labelledby="login-title" hidden>
+<p class="eyebrow">PRIVATE WORKSTATION MANAGEMENT</p><h1 id="login-title">Sign in to your workstation</h1><p>Use a scoped credential created by local owner administration. The credential is exchanged for a short-lived browser session.</p>
+<form id="login-form"><label for="credential">Management credential</label><input id="credential" name="credential" type="password" autocomplete="off" required maxlength="4096"><button type="submit">Sign in</button></form>
+<p class="muted">No owner yet? With the service stopped, run <code>bridgectl admin bootstrap --config bridge.json --output owner.token</code> locally. Open that owner-only file to enter its value here. Do not share it with inference applications.</p>
+</section>
+<div id="management" class="layout" hidden>
+<nav aria-label="Management"><a href="#serving" data-page="serving">Models &amp; serving</a><a href="#resources" data-page="resources">Resource budgets</a><a href="#profiles" data-page="profiles">Operating profiles</a><a href="#builds" data-page="builds">Build jobs</a><a href="#caches" data-page="caches">Persistent assets</a><a href="#harnesses" data-page="harnesses">Developer clients</a><a href="#operations" data-page="operations">Operations &amp; recovery</a><button id="refresh">Refresh evidence</button><button id="export-source">Download managed source</button><p class="muted">Private administration. Inference and streaming use their existing endpoints.</p></nav>
+<main id="main" tabindex="-1"><div class="page-heading"><div><p class="eyebrow" id="page-kicker">MANAGE</p><h1 id="page-title">Models &amp; serving</h1></div><span id="connection" role="status">Connecting…</span></div><section id="content" aria-live="polite"></section></main>
+</div>
+<dialog id="plan-dialog" aria-labelledby="plan-title"><form method="dialog" class="dialog-header"><h2 id="plan-title">Review the exact change</h2><button aria-label="Close preview">Close</button></form><div id="plan-summary"></div><details><summary>Complete plan and source revisions</summary><pre id="plan-json"></pre></details><form id="apply-form"><label for="target-confirm">Type the exact target to confirm</label><input id="target-confirm" autocomplete="off" required><p id="apply-consequence" class="warning"></p><button id="apply-button" type="submit">Apply approved plan</button></form></dialog>
+<footer>Spry.ai Workstation Bridge · Local assets · No telemetry · Hardware observations are evidence, not qualification.</footer>
+</body></html>

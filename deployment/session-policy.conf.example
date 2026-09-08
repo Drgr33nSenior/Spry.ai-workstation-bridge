@@ -1,0 +1,3 @@
+# Install only after review as /etc/workstation/session-policy.conf root:root 0600.
+SESSION_STATE_DIRECTORY=/var/lib/workstation-session
+SESSION_KUBECONFIG=/etc/bridge/helper.kubeconfig

@@ -1,0 +1,22 @@
+{
+  "mode": "live",
+  "state_dir": "/var/lib/bridge",
+  "source_path": "/var/lib/bridge/managed-source.json",
+  "listen": "192.0.2.10:8743",
+  "allowed_hosts": ["bridge.internal.example:8743"],
+  "external_url": "https://bridge.internal.example:8743",
+  "tls_cert_file": "/etc/bridge/tls/server.crt",
+  "tls_key_file": "/etc/bridge/tls/server.key",
+  "owner_uid": 1000,
+  "target": "replace-with-reviewed-node-name",
+  "environment": "dev",
+  "reference_root": "/usr/lib/bridge/workstation-reference",
+  "model_root": "/srv/ai/bridge-models",
+  "host_socket": "/run/bridge-hostd/control.sock",
+  "worker_socket": "/run/bridge-worker/control.sock",
+  "compiler_cache_root": "/var/cache/bridge-worker",
+  "shader_cache_root": "/srv/ai/sglang-cache",
+  "client_base_url": "http://127.0.0.1:18000/v1",
+  "queue_depth": 4,
+  "operation_timeout_seconds": 3600
+}

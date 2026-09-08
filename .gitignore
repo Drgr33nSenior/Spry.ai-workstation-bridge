@@ -1,0 +1,6 @@
+/bin/
+/dist/
+/.demo/
+/.tools/
+/coverage.out
+/test-results/

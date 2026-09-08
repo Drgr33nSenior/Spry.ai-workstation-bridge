@@ -1,0 +1,48 @@
+[Unit]
+Description=Spry.ai contained unprivileged named-build worker
+Requires=bridge-worker.socket
+After=bridge-worker.socket
+
+[Service]
+Type=simple
+User=bridge-worker
+Group=bridge-worker
+ExecStart=/usr/lib/bridge/bridge-worker --policy /etc/bridge/worker-policy.json
+StateDirectory=bridge-worker
+StateDirectoryMode=0700
+CacheDirectory=bridge-worker
+CacheDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+KillMode=control-group
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+# Delegated cgroup v2 children bound each job and prove descendant termination.
+Delegate=cpu memory pids
+DelegateSubgroup=supervisor
+ProtectControlGroups=no
+ReadWritePaths=/var/lib/bridge-worker /var/cache/bridge-worker /srv/ai/bridge-build-scratch /sys/fs/cgroup/system.slice/bridge-worker.service
+InaccessiblePaths=-/var/lib/bridge -/var/lib/bridge-hostd -/var/lib/workstation-session -/etc/bridge/server.json -/etc/bridge/host-policy.json -/etc/bridge/helper.kubeconfig -/run/bridge-hostd
+# Bubblewrap needs unprivileged mount/user/PID/network namespaces. The worker
+# has an isolated network and each build also receives its own empty network.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryMax=48G
+MemorySwapMax=0
+TasksMax=512
+LimitNOFILE=2048
+StandardOutput=journal
+StandardError=journal
