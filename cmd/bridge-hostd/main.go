@@ -9,8 +9,10 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/catalog"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/hostexec"
 )
 
@@ -23,6 +25,8 @@ func main() {
 func run() error {
 	policy := flag.String("policy", "/etc/bridge/host-policy.json", "root-owned installed executor policy")
 	manifest := flag.String("manifest", "", "offline: print hashes for a prepared runtime bundle; does not install")
+	reference := flag.String("check-reference", "", "offline: check installer catalog and print its identity; no policy or service changes")
+	native := flag.String("check-native", "", "offline with --check-reference: validate a generated native harness bundle")
 	systemManifest := flag.Bool("system-manifest", false, "offline on target: print fixed system executable hashes without running them")
 	hashConfiguration := flag.String("hash-configuration", "", "offline: print qualification key for an exported management configuration")
 	hashTemplate := flag.String("hash-template", "", "offline: print Pod template hash for an exported Deployment")
@@ -32,6 +36,34 @@ func run() error {
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments")
+	}
+	if *reference != "" {
+		inventory, err := catalog.Import(*reference)
+		if err != nil {
+			return err
+		}
+		if *native != "" {
+			files := map[string][]byte{}
+			for _, path := range []string{"bundle.json", "qwen/settings.json", "dsh/settings.yaml", "hermes/config.yaml"} {
+				files[path], err = os.ReadFile(filepath.Join(*native, path))
+				if err != nil {
+					return err
+				}
+			}
+			for _, harness := range []string{"qwen", "dsh", "hermes"} {
+				mode := "cli"
+				if harness == "dsh" {
+					mode = "acp"
+				}
+				if _, err = catalog.VerifyNative(files, harness, mode); err != nil {
+					return err
+				}
+			}
+		}
+		return json.NewEncoder(os.Stdout).Encode(inventory)
+	}
+	if *native != "" {
+		return fmt.Errorf("--check-native requires --check-reference")
 	}
 	if *manifest != "" {
 		m, err := hostexec.ArtifactManifest(*manifest)

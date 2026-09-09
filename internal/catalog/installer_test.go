@@ -22,10 +22,25 @@ func TestPinnedInstallerContract(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(revision)) != installerRevision {
 		t.Fatal("fixture must identify reviewed installer revision", err)
 	}
+	checkInstallerContract(t, root)
+}
+
+// Candidate checks supplement, never replace, the immutable known-good fixture.
+func TestCandidateInstallerContract(t *testing.T) {
+	root := os.Getenv("BRIDGE_INSTALLER_CANDIDATE")
+	if root == "" {
+		t.Skip("explicit candidate source export not supplied")
+	}
+	checkInstallerContract(t, root)
+}
+
+func checkInstallerContract(t *testing.T, root string) {
+	t.Helper()
 	if _, err := Import(root); err != nil {
 		t.Fatal(err)
 	}
 	files := map[string][]byte{}
+	var err error
 	for _, path := range []string{"bundle.json", "qwen/settings.json", "dsh/settings.yaml", "hermes/config.yaml"} {
 		files[path], err = os.ReadFile(filepath.Join(root, "bundle", path))
 		if err != nil {

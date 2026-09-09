@@ -35,12 +35,20 @@ type config struct {
 
 func main() {
 	version := flag.String("version", "", "stable version in vMAJOR.MINOR.PATCH format")
+	output := flag.String("output", "", "optional new local source output directory")
 	flag.Parse()
 	root, err := os.Getwd()
 	if err != nil {
 		fail(err)
 	}
-	if err := run(config{root: root, output: filepath.Join(root, "dist", "arch"), version: *version}); err != nil {
+	destination := filepath.Join(root, "dist", "arch")
+	if *output != "" {
+		if _, err := os.Lstat(*output); !os.IsNotExist(err) {
+			fail(fmt.Errorf("explicit output must not exist"))
+		}
+		destination = *output
+	}
+	if err := run(config{root: root, output: destination, version: *version}); err != nil {
 		fail(err)
 	}
 }

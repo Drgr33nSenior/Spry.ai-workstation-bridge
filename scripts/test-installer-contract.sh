@@ -4,6 +4,16 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 revision=67a506090e8ecf696190e0be55f865e3ce054d0e
+if [[ $# == 2 && $1 == --candidate ]]; then
+  candidate=$(cd -- "$2" && pwd -P)
+  work=$(mktemp -d)
+  trap 'rm -rf -- "$work"' EXIT
+  bash "$candidate/bin/workstationctl" agent configure "$work/bundle"
+  cp "$candidate/versions.lock" "$work/versions.lock"
+  cd "$root"
+  BRIDGE_INSTALLER_CANDIDATE="$work" GOTOOLCHAIN=local go test -count=1 -v -run 'Test(Pinned|Candidate)InstallerContract$' ./internal/catalog
+  exit
+fi
 [[ $# == 1 ]] || { printf 'usage: %s /path/to/installer-checkout\n' "$0" >&2; exit 1; }
 [[ $(git -C "$1" rev-parse "$revision^{commit}") == "$revision" ]]
 work=$(mktemp -d)

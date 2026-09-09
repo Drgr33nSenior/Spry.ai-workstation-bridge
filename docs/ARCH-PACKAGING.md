@@ -79,6 +79,22 @@ the repository, tag and successful workflow before accepting an artifact.
 
 ## Installation boundaries
 
+For the personal ArchLinuxThreadripper ISO integration, the package also owns
+`/usr/share/doc/spry-ai-workstation-bridge/source.sha256`. This identifies the
+exact source archive consumed by the recipe. Keep that archive, PKGBUILD and
+`.BUILDINFO` with the candidate; a version string or Git HEAD alone does not
+identify a locally modified build. A new explicit output directory is supported:
+`go run ./cmd/bridge-arch-package --version v0.0.0 --output /absolute/new/source`.
+
+The installer independently checks dependencies against its selected snapshot
+and packages its runtime/reference closure. Bridge's Go requirement is build-only.
+Do not replace the installer's frozen snapshot with the CI snapshot. Run
+`bash scripts/test-installer-contract.sh --candidate /absolute/installer/export`
+alongside the historical pinned test. The actual package's `bridge-hostd
+--check-reference PATH --check-native BUNDLE` checks catalog/native compatibility
+without starting services or authorizing executable hashes. `--manifest PATH`
+remains an offline inspection, not a policy approval.
+
 The package installs binaries under `/usr/lib/bridge`, a `bridgectl` link under
 `/usr/bin`, systemd units and the canonical sysusers/tmpfiles definitions.
 Examples remain under `/usr/share/spry-ai-workstation-bridge/examples`; they are

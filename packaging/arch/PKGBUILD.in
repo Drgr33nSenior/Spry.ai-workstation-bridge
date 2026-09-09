@@ -60,6 +60,9 @@ package() {
   install -Dm755 bridgectl "$pkgdir/usr/lib/bridge/bridgectl"
   install -Dm755 bridge-hostd "$pkgdir/usr/lib/bridge/bridge-hostd"
   install -Dm755 bridge-worker "$pkgdir/usr/lib/bridge/bridge-worker"
+  # Bind the binary package to the reviewed source archive, not its version label.
+  install -d "$pkgdir/usr/share/doc/$pkgname"
+  printf '%s\n' "${sha256sums[0]}" > "$pkgdir/usr/share/doc/$pkgname/source.sha256"
   install -d "$pkgdir/usr/bin"
   ln -s ../lib/bridge/bridgectl "$pkgdir/usr/bin/bridgectl"
 

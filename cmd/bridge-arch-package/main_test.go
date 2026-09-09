@@ -177,6 +177,10 @@ func TestPackageFunctionInstallsOnlyReviewedPayloadOnLinux(t *testing.T) {
 		t.Fatalf("fixture package() failed: %v\n%s", runErr, output)
 	}
 	expected := expectedPackageFiles(t, repoRoot)
+	expected["usr/share/doc/"+packageName+"/source.sha256"] = 0644
+	if got := strings.TrimSpace(string(mustRead(t, filepath.Join(pkgdir, "usr/share/doc", packageName, "source.sha256")))); got != strings.Repeat("a", 64) {
+		t.Fatal("package source identity does not match the recipe's verified archive")
+	}
 	actual := packageFiles(t, pkgdir)
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("package payload mismatch\nactual: %#v\nexpected: %#v", actual, expected)
