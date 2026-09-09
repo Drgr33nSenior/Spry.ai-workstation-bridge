@@ -143,5 +143,5 @@ func Import(root string) (Inventory, error) {
 }
 
 func HarnessPins() map[string]string {
-	return map[string]string{"QWEN_CODE_VERSION": "0.23.0", "QWEN_CODE_COMMIT": "98a9c964158697dd5631d15a62174684ff7bbb53", "DSH_COMMIT": "c389f96bf3a9b6807cb71ed6bdad5849be0df6d8", "HERMES_AGENT_COMMIT": "13fb5e1eceba51fc45a48b5d95a357e144d42689"}
+	return map[string]string{"QWEN_CODE_VERSION": "0.23.2", "QWEN_CODE_COMMIT": "f56de980b316cd5410f067fbb62357481ebd66b8", "DSH_COMMIT": "c389f96bf3a9b6807cb71ed6bdad5849be0df6d8", "HERMES_AGENT_COMMIT": "13fb5e1eceba51fc45a48b5d95a357e144d42689"}
 }

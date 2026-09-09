@@ -1,6 +1,7 @@
 # Reference and live adapter contracts
 
-Verified 2026-09-08. The reference repository is
+Original baseline inspection: 2026-09-08. The current Qwen pin review is recorded
+below. The reference repository is
 `/Users/uk-gr9yjx0l0y/Projects/ArchLinuxThreadripperAI`. It had no `HEAD` during
 inspection. Source files were untracked, and IDE files were staged. File hashes,
 not a fabricated clean Git revision, identify the imported source. Bridge does
@@ -51,10 +52,44 @@ The helper permits only independently qualified exact configurations.
 Upstream engine source compatibility does not qualify the R9700 kernel path.
 
 The native client schemas are bound to
-[Qwen Code 0.23.0](https://github.com/QwenLM/qwen-code/tree/98a9c964158697dd5631d15a62174684ff7bbb53),
+[Qwen Code 0.23.2](https://github.com/QwenLM/qwen-code/tree/f56de980b316cd5410f067fbb62357481ebd66b8),
 [DSH](https://github.com/deepseek-ai/deepseek-harness/tree/c389f96bf3a9b6807cb71ed6bdad5849be0df6d8), and
 [Hermes](https://github.com/NousResearch/hermes-agent/tree/13fb5e1eceba51fc45a48b5d95a357e144d42689).
-GitHub's commit API confirmed all three exact commits on the verification date.
+The Qwen patch contract was rechecked on 9 September 2026 against installer
+`67a506090e8ecf696190e0be55f865e3ce054d0e`, starting from clean Bridge
+`deb6a93fcbb35fe7ea44f085b78d1ac174729d1b`. The earlier candidate patch was not
+present. Reviewed [settings schema](https://github.com/QwenLM/qwen-code/blob/f56de980b316cd5410f067fbb62357481ebd66b8/packages/cli/src/config/settingsSchema.ts)
+and [generation configuration](https://github.com/QwenLM/qwen-code/blob/f56de980b316cd5410f067fbb62357481ebd66b8/packages/core/src/core/contentGenerator.ts)
+retain the explicit OpenAI provider, credential environment key, context/output
+budgets, timeout and approval fields used here. This is schema/source evidence,
+not execution of the installed Qwen client. DSH and Hermes pins are unchanged.
+
+`internal/catalog/testdata/installer` contains the pinned installer's exported
+native bundle and lock. The catalog test checks all three clients, metadata and
+digests, and rejects either stale Qwen version/commit independently. Reproduce
+the comparison from an existing local installer Git tree:
+
+```sh
+bash scripts/test-installer-contract.sh /absolute/path/to/ArchLinuxThreadripperAI
+```
+
+The script exports the exact commit to a private temporary directory; it does
+not check out a branch, run an installer or launch a client. It fails if that
+commit or a required tool is unavailable. Import-time drift refusal remains
+enabled. Previously generated 0.23.0 bundles require a fresh, reviewed export;
+do not edit their checksums to bypass validation. Root-owned installed runtime
+manifests and owner-reviewed executable hashes are unchanged and must be
+reviewed separately before deployment.
+
+Validation for this reconciliation: `go test -count=1 -v ./internal/catalog
+./internal/client`, the pinned cross-repository script, `make check`, and a fresh
+`go test -count=1 -json ./...` all passed on macOS/arm64 with Go 1.27.1. The fresh
+run reported 112 top-level tests passed and one GNU-install/Linux package-test
+skip. Linux-tagged staging/sandbox, deployment-permission, peer-credential and
+cgroup/namespace tests were excluded on macOS. Compatible Linux systemd and
+live Kubernetes enforcement were not verified. The optional browser suite and
+installed Qwen execution were not run. Govulncheck reported no vulnerabilities.
+
 DSH supports only the pinned ACP profile. Hermes's output-token cap remains
 provider-owned. Qwen's existing system settings policy is never overridden.
 Bundles are secret-free configuration; credential values come from the local

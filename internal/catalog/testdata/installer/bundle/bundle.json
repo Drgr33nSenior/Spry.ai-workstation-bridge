@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "status": "configured-not-qualified",
+  "default_harness": "qwen",
+  "preference_order": [
+    "qwen",
+    "dsh",
+    "hermes"
+  ],
+  "automatic_fallback": false,
+  "base_url": "http://127.0.0.1:18000/v1",
+  "model": "Qwen3.8-27B-FP8",
+  "context_tokens": 32768,
+  "max_output_tokens": 4096,
+  "output_limit_support": {
+    "qwen": "request",
+    "dsh": "request-default",
+    "hermes": "unsupported-provider-owned"
+  },
+  "config_sha256": {
+    "qwen": "9effc31a9fd1871c967d0c0e34fa42c5dc91e53fef343dfbd9b0eb661bc61358",
+    "dsh": "1dbb3b798fbe9f808db3fc7c2f3bb41c90a25dcafe8ba77e32c9daf13bdaef25",
+    "hermes": "faff1391a5e5262b787ec59512c14799be33d7c654a05161a02de66e8d48046b"
+  },
+  "sources": {
+    "qwen": {
+      "repository": "https://github.com/QwenLM/qwen-code",
+      "commit": "f56de980b316cd5410f067fbb62357481ebd66b8",
+      "version": "0.23.2"
+    },
+    "dsh": {
+      "repository": "https://github.com/deepseek-ai/deepseek-harness",
+      "commit": "c389f96bf3a9b6807cb71ed6bdad5849be0df6d8"
+    },
+    "hermes": {
+      "repository": "https://github.com/NousResearch/hermes-agent",
+      "commit": "13fb5e1eceba51fc45a48b5d95a357e144d42689"
+    }
+  }
+}
