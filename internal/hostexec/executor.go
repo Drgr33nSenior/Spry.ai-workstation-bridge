@@ -230,7 +230,7 @@ func (e *Executor) Submit(peer uint32, req Request) (Result, error) {
 }
 
 func readOnlyAction(action string) bool {
-	return action == "hardware.refresh" || action == "cpu-policy.export"
+	return action == "hardware.refresh" || action == "cpu-policy.export" || domain.MemoryAction(action)
 }
 
 func (e *Executor) visibleResult(r record) Result {
@@ -246,6 +246,12 @@ func (e *Executor) validate(r Request) error {
 	}
 	if err := e.validateRecovery(r); err != nil {
 		return err
+	}
+	if err := domain.ValidateMemoryRequest(r.Draft); err != nil {
+		return err
+	}
+	if domain.MemoryAction(r.Draft.Action) {
+		return e.validateMemoryRequest(r)
 	}
 	if r.Draft.Profile != "" && r.Draft.Action != "profile.switch" {
 		return errors.New("profile does not belong to this typed operation")

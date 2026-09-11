@@ -18,6 +18,18 @@ dedicated trusted HTTPS hostname. The live loopback HTTP example is CLI-only;
 demo HTTP below is separate. See the [remediation and migration guide](docs/REMEDIATION.md)
 for session invalidation, model permission repair and recovery-chain behavior.
 
+Optional [private telemetry](docs/TELEMETRY.md) exports bounded OpenTelemetry
+metrics and traces to an owner-configured collector. Export is disabled by
+default. An owner-only summary reports local status and selected Prometheus
+measurements without exposing arbitrary queries, credentials or raw audit data.
+
+The owner-only [memory-budget workflow](docs/MEMORY-BUDGETS.md) imports sealed
+evidence collected by the non-root workstation owner and exports unqualified
+SGLang memory candidates. Private artifacts stay separate from sanitized views.
+An optional OpenAI Agents API adviser is disabled by default; it can explain
+selected evidence and request a plan, but cannot approve or apply one. Neither
+workflow automatically changes running memory limits or grants qualification.
+
 ## Run the demo
 
 Use Go **1.27.1**, as recorded in `.go-version`. No production Node.js runtime,
@@ -86,8 +98,9 @@ CDNs, external fonts or telemetry services are needed by the application.
 The generated [OpenAPI 3.1.1 contract](api/openapi.json) comes from Go wire types
 and the route register in `internal/contract`. Run `make generate` after changing
 the contract; `make generated openapi` checks reproducibility and validates the
-specification using a pinned tool. Tool-only dependencies and their checksums are
-in `go.mod`/`go.sum`; the four runtime entry points use the Go standard library.
+specification using a pinned tool. Runtime OpenTelemetry dependencies, development
+tools and their checksums are pinned in `go.mod`/`go.sum`. The telemetry guide
+records the SDK identity, licence, configuration limits and verification boundary.
 
 ## CI and versioned build artifacts
 

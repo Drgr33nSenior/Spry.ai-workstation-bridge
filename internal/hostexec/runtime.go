@@ -185,6 +185,9 @@ func (e *Executor) execute(ctx context.Context, r Request, lock *os.File) (data 
 	if r.Draft.Action == "hardware.refresh" {
 		return e.refreshHardware(ctx, r.ID, lock)
 	}
+	if domain.MemoryAction(r.Draft.Action) {
+		return e.executeMemory(ctx, r, lock)
+	}
 	if err := e.checkHardware(); err != nil {
 		return nil, err
 	}

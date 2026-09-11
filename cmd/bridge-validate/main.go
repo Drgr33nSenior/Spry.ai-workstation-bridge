@@ -113,6 +113,9 @@ func validateExample(name string, data []byte) error {
 		if err := config.Decode(data, &c); err != nil {
 			return err
 		}
+		if err := c.Telemetry.Validate(); err != nil {
+			return err
+		}
 		if c.Mode != "live" || !permittedEnvironment(c.Environment) || c.OwnerUID < 0 || c.Target == "" {
 			return errors.New("server example requires explicit live mode, owner, target and permitted environment")
 		}

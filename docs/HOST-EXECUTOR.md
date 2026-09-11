@@ -89,10 +89,10 @@ archive records only during owner-reviewed stopped-service maintenance. Back up
 the helper journal, legacy state, root policy and runtime manifest together.
 The API store is a separate backup and cannot replace privileged recovery data.
 
-Interrupted read-only hardware refresh and CPU-policy exports become failed
-diagnostic operations at restart, not GPU recovery fences. Their incomplete
-outputs are not reported successful. Mutating operations retain the conservative
-unknown-effect behavior above.
+Interrupted read-only hardware refresh, CPU-policy exports and memory
+imports/exports become failed diagnostic operations at restart, not GPU recovery
+fences. Their incomplete outputs are not reported successful. Mutating operations
+retain the conservative unknown-effect behavior above.
 
 ## Serving qualification
 
@@ -190,6 +190,36 @@ publication.
 `resource-plan.json` and `ansible-vars.json`. It does not drain a node, delete CPU
 Manager state, edit kubelet configuration or apply Ansible. Those actions remain
 owner-reviewed host maintenance.
+
+## Memory evidence and candidate export
+
+The owner-only `memory.evidence.import` and `memory.plan.export` actions use the
+independent helper journal and canonical session lock. They preserve evidence
+and generate unqualified artifacts; they do not resize Pods, restart serving or
+change managed source. Follow [memory budgets](MEMORY-BUDGETS.md) for collection,
+sealing, import, export and separate candidate qualification.
+
+The non-root workstation owner runs collection with the reviewed installer
+commands. The helper does not run those long experiments as root. An owner
+provisions protected sealed inputs through offline administration and references
+them in `memory_sources`. Installed runtime/tool hashes still require separate
+root-policy approval; sealing or importing evidence cannot approve changed code.
+
+Export requires the complete live Pod template to match the sealed baseline,
+including independently qualified ConfigMaps. Observed model files must exactly
+match the qualification's `files` map, except the existing non-authoritative
+`.bridge-receipt.json` exemption. The collector hashes that receipt, and the
+sealed evidence binds it, but it cannot authorize weights. Launch/settings,
+current hardware/boot and observation node must also match. The current collector does not attest the
+CPU-offload setting, so nonzero CPU-offload memory export is unavailable.
+Missing observations or drift cannot be treated as zero usage or qualification.
+
+`plan.json`, `patch.json` and `rollback.json` remain private because the baseline
+Pod spec can contain secrets. The owner-only download path rechecks the baseline
+and artifact hashes; operation records expose sanitized summaries and metadata.
+The optional Agents API adviser runs in the controller, not this helper. It sees
+sanitized evidence only and cannot approve policy, apply a patch or qualify a
+candidate.
 
 ## systemd qualification
 

@@ -57,6 +57,25 @@ func ConfigurationHash(s *domain.Serving, r *domain.Resources) string {
 
 type Client struct{ Socket string }
 
+func (c Client) MemoryPreview(ctx context.Context, d domain.Draft, cfg domain.Configuration) (domain.MemorySummary, error) {
+	r, e := c.call(ctx, http.MethodPost, "/v1/memory/preview", Request{Draft: d, Desired: cfg})
+	if e != nil {
+		return domain.MemorySummary{}, e
+	}
+	var s domain.MemorySummary
+	e = strictDecode(bytes.NewReader(r.Data), &s)
+	return s, e
+}
+func (c Client) MemoryArtifact(ctx context.Context, id, name string) (domain.Artifact, error) {
+	r, e := c.call(ctx, http.MethodPost, "/v1/memory/artifact", domain.MemoryArtifactRequest{OperationID: id, Name: name})
+	if e != nil {
+		return domain.Artifact{}, e
+	}
+	var a domain.Artifact
+	e = strictDecode(bytes.NewReader(r.Data), &a)
+	return a, e
+}
+
 func (c Client) call(ctx context.Context, method, path string, body any) (Result, error) {
 	var result Result
 	if c.Socket == "" {

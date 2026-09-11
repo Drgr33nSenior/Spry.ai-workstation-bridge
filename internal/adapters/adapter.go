@@ -196,10 +196,23 @@ func (d *Demo) Validate(ctx context.Context, draft domain.Draft, c domain.Config
 		return domain.Preview{}, e
 	}
 	p := preview(draft, c, inv.SourceRevision)
+	if domain.MemoryAction(draft.Action) {
+		s, err := d.MemoryPreview(ctx, draft, c)
+		if err != nil {
+			return p, err
+		}
+		for k, v := range s.Preconditions {
+			p.Preconditions[k] = v
+		}
+		p.Consequences = append(p.Consequences, "DEMO evidence export only; no resource change or qualification.")
+	}
 	p.Warnings = append(p.Warnings, "DEMO: effects are simulated and do not qualify hardware")
 	return p, nil
 }
 func (d *Demo) Execute(ctx context.Context, x domain.Execution, progress func(domain.Progress) error) (domain.Result, error) {
+	if domain.MemoryAction(x.Plan.Draft.Action) {
+		return d.executeMemory(ctx, x)
+	}
 	d.mu.Lock()
 	if r, ok := d.state.Results[x.ID]; ok {
 		d.mu.Unlock()
@@ -381,6 +394,28 @@ func (l *Live) Snapshot(ctx context.Context) (domain.Inventory, error) {
 	return inv, nil
 }
 func (l *Live) Validate(ctx context.Context, d domain.Draft, c domain.Configuration) (domain.Preview, error) {
+	if domain.MemoryAction(d.Action) {
+		// Intake must remain usable during a cluster outage. Export independently
+		// checks live capacity in the helper; generic inventory would probe twice.
+		ref, err := catalog.Import(l.opts.ReferenceRoot)
+		if err != nil {
+			return domain.Preview{}, err
+		}
+		if err = domain.ValidateDraft(d, c, domain.Inventory{Target: l.opts.Target}); err != nil {
+			return domain.Preview{}, err
+		}
+		s, err := l.MemoryPreview(ctx, d, c)
+		if err != nil {
+			return domain.Preview{}, err
+		}
+		p := preview(d, c, ref.SourceRevision)
+		for k, v := range s.Preconditions {
+			p.Preconditions[k] = v
+		}
+		p.Consequences = append(p.Consequences, "Export evidence/candidate/rollback only. No source update, Pod resize, restart or qualification.")
+		p.Warnings = append(p.Warnings, s.Limitations...)
+		return p, nil
+	}
 	inv, e := l.Snapshot(ctx)
 	if e != nil {
 		return domain.Preview{}, e
@@ -489,6 +524,9 @@ func (l *Live) Execute(ctx context.Context, x domain.Execution, progress func(do
 			result = domain.Result{State: hr.State, Phase: hr.Phase, Message: hr.Message, RecoveryRequired: hr.State == "recovery-required"}
 			if x.Plan.Draft.Action == "cpu-policy.export" && hr.State == "succeeded" {
 				result.Artifacts, e = cpuArtifacts(hr.Data, x.Plan.Desired.Revision)
+			}
+			if domain.MemoryAction(x.Plan.Draft.Action) && hr.State == "succeeded" {
+				result.Artifacts, e = memoryArtifacts(hr.Data, x.Plan.Desired.Revision)
 			}
 		}
 	default:
@@ -610,6 +648,9 @@ func (l *Live) Inspect(ctx context.Context, id string) (domain.Result, error) {
 		if e == nil && r.Action == "cpu-policy.export" && h.State == "succeeded" {
 			result.Artifacts, e = cpuArtifacts(h.Data, r.SourceRevision)
 		}
+		if e == nil && domain.MemoryAction(r.Action) && h.State == "succeeded" {
+			result.Artifacts, e = memoryArtifacts(h.Data, r.SourceRevision)
+		}
 		return result, e
 	}
 	if r.Kind == "worker" {
@@ -674,6 +715,9 @@ func (l *Live) InspectExecution(ctx context.Context, x domain.Execution) (domain
 		result := domain.Result{State: h.State, Phase: h.Phase, Message: h.Message, RecoveryRequired: h.State == "recovery-required"}
 		if statusErr == nil && x.Plan.Draft.Action == "cpu-policy.export" && h.State == "succeeded" {
 			result.Artifacts, statusErr = cpuArtifacts(h.Data, x.Plan.Desired.Revision)
+		}
+		if statusErr == nil && domain.MemoryAction(x.Plan.Draft.Action) && h.State == "succeeded" {
+			result.Artifacts, statusErr = memoryArtifacts(h.Data, x.Plan.Desired.Revision)
 		}
 		return result, statusErr
 	}

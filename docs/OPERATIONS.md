@@ -97,6 +97,31 @@ intentional refusals. Validate the installed systemd units against the installed
 manuals. Start services only through the owner's normal host-management change
 process. The controller is unprivileged and refuses live startup as root.
 
+## Memory evidence and optional advice
+
+Follow [memory budgets](MEMORY-BUDGETS.md) before using `memory.evidence.import`
+or `memory.plan.export`. Collect the baseline and cold/warm observations as the
+non-root workstation owner, then seal a new private bundle locally. Provision
+the reviewed copy and its `memory_sources` entry through offline helper-policy
+administration. Runtime manifests remain separately root-approved; do not update
+approved hashes merely to make changed collection or planner code run.
+
+Owner-authenticated previews do not import evidence or apply a candidate.
+Confirming an import/export plan records evidence or generates unqualified
+artifacts; it does not change the running Pod or managed source. Keep downloaded
+plan/patch/rollback files private. Their download rechecks the complete baseline,
+observed model-file hashes, launch settings, hardware/boot and target node. Nonzero CPU-offload
+memory export is currently unavailable because the collector cannot attest that
+setting. Candidate trials, rollback and qualification require separate reviewed
+maintenance.
+
+The optional actual OpenAI Agents API adviser is disabled by default. Enabling it
+requires reviewed server policy, a provisioned credential-file reference and
+separate provider spending controls. Review the guide's privacy and spending
+limits first. Only selected sanitized evidence leaves the controller; no private
+artifact, Kubernetes identity or Bridge management credential is sent. Advisory
+text cannot approve or apply a plan. Deterministic planning needs no OpenAI account.
+
 ## Private HTTPS and VPN access
 
 Live HTTP binds only loopback and is CLI-only (`browser_sessions: false`).
@@ -218,3 +243,9 @@ Do not delete kubelet state, drain the node, kill unrelated consumers, remove a
 build-inhibit marker or rewrite helper journals to obtain a successful status.
 Disk/boot/firmware changes, Secure Boot key management, kernel promotion and
 backup retention remain separate owner host-administration procedures.
+
+For a detached memory import/export, use `bridgectl memory-inspect OPERATION_ID`
+and inspect the original operation. This checks independent helper completion
+without redispatch or GPU restoration. Retain failed inputs and partial outputs;
+they are not qualified or exportable successes. See the
+[memory failure procedure](MEMORY-BUDGETS.md#import-plan-confirm-and-export).

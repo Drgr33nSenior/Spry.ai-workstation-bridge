@@ -23,7 +23,10 @@ and credentials. No runtime endpoint changes service policy, targets or adapters
 | Setting | Canonical authority | Import/export and reload |
 |---|---|---|
 | Listener, allowed Hosts, owner UID, role credentials, adapter mode and paths | Root-owned `/etc/bridge/server.json`; credential verifiers in `/var/lib/bridge/state.json` | Local policy edit and controller restart. Initial credential/recovery commands require the stopped store's exclusive lock. |
+| Telemetry export, sampling and private Prometheus endpoint | `telemetry` in root-owned `/etc/bridge/server.json` | Disabled by default. Local policy edit and controller restart; no API write or environment override. |
+| Optional Agents API adviser, model, credential-file reference and local bounds | `advisor` in root-owned `/etc/bridge/server.json` | Disabled by default. Local policy edit and controller restart; no API configuration or approval authority. |
 | Helper target, shared lock, runtime hashes, qualification and Kubernetes identity reference | Root-owned `/etc/bridge/host-policy.json`, `/etc/workstation/session-policy.conf` | Owner review and helper restart. No API write. |
+| Sealed memory inputs | `memory_sources` in root-owned helper policy; independent helper journal for completed imports | Owner-run non-root collection and offline provisioning. API selects a reviewed ID and digest, never a filesystem path. Runtime hashes remain separately root-approved. |
 | Installer workstation settings and package/model source locks | Reviewed `/etc/workstation/workstation.conf` and installed `versions.lock`; source repository remains the maintenance authority | Installer's allowlisted literal parser remains authoritative. Never source API input as shell. Reference import checks pinned values and source hashes. |
 | Serving model/context/concurrency/memory/offload and workload CPU/RAM/shm/GPU budgets | Deliberately migrated fields in `/var/lib/bridge/managed-source.json` | Initial offline import from a reviewed file. Subsequent typed plans update this file atomically. API/CLI/UI export the same JSON. Helpers regenerate only fixed fields. |
 | Managed cache admission/build budgets | `managed-source.json`, bounded by independently installed worker policy | Plan/apply updates future admission. Existing data is not removed. Root worker ceilings still apply. |
@@ -52,12 +55,33 @@ and outstanding recovery before dispatch. HTTP disconnects do not cancel work.
 Cancellation requires the observed operation revision and records a request;
 only the executor can establish that descendants or device owners have stopped.
 
+[Memory import and export](MEMORY-BUDGETS.md) use this plan/operation boundary
+without changing managed source or running workloads. Before candidate export,
+the helper rechecks the complete live Pod template, qualified model files and
+launch settings, current hardware/boot and target node. Private plan/patch/rollback
+contents are absent from public operation records; owner-only downloads recheck
+their preconditions.
+
+The optional adviser uses the actual
+[Agents API function flow](https://developers.openai.com/api/docs/guides/agents-api/tools/functions),
+not the Agents SDK or Responses API. Its environment-free session receives only
+selected sanitized evidence through three fixed local handlers. A requested
+export plan is bound to the authenticated owner and remains unapproved. Provider
+text cannot authorize a tool, change policy, approve a plan or apply a patch.
+The detailed guide records privacy, spending and collection limitations.
+
 ## Persistence and external effects
 
 The small embedded store uses bounded JSON snapshots instead of a SQLite driver.
-This keeps all runtime binaries in the standard library with no CGO or external
-database dependency. The tradeoff is rewriting up to 32 MiB per transaction;
+Persistence needs no CGO or external database dependency. The optional controller
+telemetry uses the pinned OpenTelemetry Go SDK; it does not change storage or
+operation authority. The tradeoff is rewriting up to 32 MiB per transaction;
 this is intended for one workstation's low-volume control operations.
+
+[Telemetry](TELEMETRY.md) is a separate, lossy diagnostic channel. Export failures
+do not change approval, dispatch, cancellation or recovery decisions. The
+owner-only summary exposes fixed aggregate measurements and state counts, not
+the durable store or a general backend proxy. It does not execute agent tools.
 
 A process-wide flock admits one writer or one offline administrator. An update
 clones the state, validates it, writes a new file, syncs it, renames it and syncs
@@ -136,8 +160,10 @@ or a browser checkbox.
 
 Go 1.27.1 was checked against [official release metadata](https://go.dev/dl/?mode=json)
 on 2026-09-08. HTTP timeout, TLS and shutdown mechanisms follow the
-[Go HTTP contract](https://pkg.go.dev/net/http). The four runtime binaries have no
-third-party library imports. Tool-only `kin-openapi v0.149.0` (MIT, commit
+[Go HTTP contract](https://pkg.go.dev/net/http). The optional telemetry integration
+uses the pinned OpenTelemetry dependencies described in [TELEMETRY.md](TELEMETRY.md).
+The memory planner bridge and narrow Agents API adapter add no runtime dependency.
+Tool-only `kin-openapi v0.149.0` (MIT, commit
 `1a812b4b73ede7fa295c63a5c89d1ca7250dcc07`) validates OpenAPI 3.1.1;
 `golang.org/x/vuln v1.7.0` (Go BSD licence, commit
 `617f44b718537dccdea1915395650e0529e3b72e`) runs vulnerability checks. Their

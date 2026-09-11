@@ -147,6 +147,42 @@ func TestCLIAndDaemon(t *testing.T) {
 		}
 		return op
 	}
+	// Exercise new commands against the real daemon/CLI, not a response handler.
+	memoryDraft := domain.Draft{Action: "memory.evidence.import", Target: inventory.Target, SourceRevision: cfg.Revision, Memory: &domain.MemoryRequest{EvidenceID: "demo-complete", EvidenceSHA256: strings.Repeat("a", 64), OtherMiB: 8192}}
+	memoryPath := filepath.Join(tmp, "memory-draft.json")
+	writeMemory := func() {
+		t.Helper()
+		b, _ := json.Marshal(memoryDraft)
+		if err := os.WriteFile(memoryPath, b, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeMemory()
+	owner(0, "memory-preview", "--file", memoryPath)
+	for _, credential := range []string{viewer, operator} {
+		run(3, "--endpoint", "http://127.0.0.1:"+strconv.Itoa(port), "--credential-file", credential, "memory")
+	}
+	imported := apply(createPlan(memoryDraft), "fixture-memory-import")
+	owner(0, "wait", imported.ID)
+	memoryDraft.Action = "memory.plan.export"
+	memoryDraft.Memory.EvidenceID = imported.ID
+	writeMemory()
+	owner(0, "memory-preview", "--file", memoryPath)
+	memoryOp := apply(createPlan(memoryDraft), "fixture-memory-export")
+	var memoryDone domain.Operation
+	if err := json.Unmarshal(owner(0, "wait", memoryOp.ID), &memoryDone); err != nil {
+		t.Fatal(err)
+	}
+	if memoryDone.SourceUpdated || memoryDone.LiveApplied || memoryDone.RecoveryRequired {
+		t.Fatal("memory export mutated or qualified workload")
+	}
+	owner(0, "memory")
+	owner(0, "memory-inspect", memoryOp.ID)
+	owner(0, "artifact", memoryOp.ID, "--name", "memory-summary.json", "--output", filepath.Join(tmp, "memory-summary.json"))
+	readConfig()
+	if cfg.Revision != memoryDraft.SourceRevision {
+		t.Fatal("memory workflow changed source")
+	}
 	s := cfg.Serving
 	s.Concurrency++
 	draft := domain.Draft{Action: "serving.configure", Target: inventory.Target, SourceRevision: cfg.Revision, Serving: &s}
@@ -259,4 +295,5 @@ func TestCLIAndDaemon(t *testing.T) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	owner(0, "wait", op.ID)
+	owner(0, "memory-inspect", memoryOp.ID)
 }

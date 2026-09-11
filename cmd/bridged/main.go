@@ -21,13 +21,16 @@ import (
 
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/adapters"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/admin"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/advisor"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/api"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/client"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/config"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/domain"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/engine"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/safefile"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/source"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/store"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/telemetry"
 )
 
 func main() {
@@ -107,8 +110,27 @@ func run() error {
 		return err
 	}
 	eng := engine.New(db, src, adapter, c.Target, c.QueueDepth, time.Duration(c.OperationTimeoutSeconds)*time.Second)
+	eng.Telemetry, err = telemetry.New(context.Background(), c.Telemetry)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = eng.Telemetry.Shutdown(ctx)
+	}()
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	app := api.New(c, eng, logger)
+	if c.Advisor.Enabled {
+		key, e := client.ReadCredential(c.Advisor.APIKeyFile)
+		if e != nil {
+			return errors.New("advisory owner-private credential reference unavailable")
+		}
+		app.Advisor, e = advisor.New(c.Advisor, key)
+		if e != nil {
+			return e
+		}
+	}
 	server := &http.Server{Addr: c.Listen, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13}}
 	if c.TLSCertFile != "" {
 		pair, e := tls.LoadX509KeyPair(c.TLSCertFile, c.TLSKeyFile)

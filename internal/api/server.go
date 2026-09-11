@@ -14,11 +14,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/advisor"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/auth"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/config"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/domain"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/engine"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/store"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/telemetry"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/web"
 )
 
@@ -28,25 +30,35 @@ type attempt struct {
 	start time.Time
 }
 type Server struct {
-	Config   config.Config
-	Engine   *engine.Engine
-	Logger   *slog.Logger
-	mu       sync.Mutex
-	attempts map[string]attempt
-	global   attempt
-	handler  http.Handler
+	Advisor    *advisor.Client
+	Config     config.Config
+	Engine     *engine.Engine
+	Logger     *slog.Logger
+	mu         sync.Mutex
+	attempts   map[string]attempt
+	global     attempt
+	handler    http.Handler
+	prometheus *telemetry.Prometheus
 }
 
 func New(c config.Config, e *engine.Engine, logger *slog.Logger) *Server {
-	s := &Server{Config: c, Engine: e, Logger: logger, attempts: map[string]attempt{}}
+	s := &Server{Config: c, Engine: e, Logger: logger, attempts: map[string]attempt{}, prometheus: telemetry.NewPrometheus(c.Telemetry.PrometheusURL)}
 	mux := http.NewServeMux()
 	mux.Handle("/", s.browser(web.Handler()))
-	mux.HandleFunc("GET /health/live", s.live)
-	mux.HandleFunc("POST /api/v1/auth/login", s.login)
-	secure := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.authenticate(h)) }
+	mux.HandleFunc("GET /health/live", s.observe("GET /health/live", s.live))
+	mux.HandleFunc("POST /api/v1/auth/login", s.observe("POST /api/v1/auth/login", s.login))
+	secure := func(pattern string, h http.HandlerFunc) {
+		mux.Handle(pattern, s.observe(pattern, s.authenticate(h).ServeHTTP))
+	}
 	secure("GET /api/v1/auth/session", s.session)
 	secure("POST /api/v1/auth/logout", s.logout)
 	secure("GET /api/v1/status", s.inventory)
+	secure("GET /api/v1/telemetry/summary", s.telemetrySummary)
+	secure("GET /api/v1/memory", s.memoryEvidence)
+	secure("POST /api/v1/memory/preview", s.memoryPreview)
+	secure("POST /api/v1/memory/artifact", s.memoryArtifact)
+	secure("POST /api/v1/memory/advice", s.memoryAdvice)
+	secure("POST /api/v1/memory/inspect", s.memoryInspect)
 	secure("GET /api/v1/models", s.inventory)
 	secure("GET /api/v1/resources", s.inventory)
 	secure("GET /api/v1/builds", s.inventory)
@@ -343,6 +355,9 @@ func (s *Server) getPlan(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, domain.Fail("not_found", "plan not found"))
 		return
 	}
+	if domain.MemoryAction(p.Draft.Action) && !s.owner(w, r) {
+		return
+	}
 	s.json(w, 200, p)
 }
 func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
@@ -369,10 +384,23 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", `"`+strconv.FormatUint(o.Revision, 10)+`"`)
+		if domain.MemoryAction(o.Plan.Draft.Action) && !s.owner(w, r) {
+			return
+		}
 		s.json(w, 200, o)
 		return
 	}
-	s.json(w, 200, s.Engine.Operations())
+	operations := s.Engine.Operations()
+	if actor(r).Role != "owner" {
+		filtered := []domain.Operation{}
+		for _, o := range operations {
+			if !domain.MemoryAction(o.Plan.Draft.Action) {
+				filtered = append(filtered, o)
+			}
+		}
+		operations = filtered
+	}
+	s.json(w, 200, operations)
 }
 func (s *Server) cancel(w http.ResponseWriter, r *http.Request) {
 	var empty struct{}

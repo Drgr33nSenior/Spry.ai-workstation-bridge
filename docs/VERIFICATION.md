@@ -1,5 +1,146 @@
 # Verification record
 
+## Memory-budget integration — 2026-09-11
+
+This section records source and isolated-fixture evidence, not workstation RAM
+savings or installed-service qualification. The earlier results below remain
+historical. No installer file, live workload, owner policy, credential, deployment
+or Git history was changed for this integration. Existing telemetry and ISO work
+was preserved. The memory integration adds no Go dependency; the existing dirty
+OpenTelemetry module changes remain in place.
+
+The inspected pair was Bridge `90312ed3c81a6dae5f6b84a072d67f670ac970c8` and
+installer `843a52be656699f261285d052e3e42fbac54b9e1`, both with uncommitted changes.
+These commits alone do not identify the candidate memory implementation. Exact
+source SHA-256 values inspected in this checkout were:
+
+| Source | SHA-256 |
+|---|---|
+| Bridge `.go-version` (1.27.1) | `a8844fbc8c3eb51c26ed00aec4cd5a5a9d647f849c6ead07bcc83ed24c4a7718` |
+| Bridge `go.mod` | `e4dfa3af517e4cb5015c9acfecc99518c789dbd1792828ef55d05c18b1a6bfd0` |
+| Bridge `go.sum` | `7a039797ebd8cad6db85d40ca6c7c38c0f9e902c7eb98e9caf1183679e2ea3da` |
+| Bridge generated `api/openapi.json` | `cfc298c3fc6a2b0f6981640c23e94d1403030dfb0e932d8d16707e62003b9fe2` |
+| Installer `infrastructure/packages/bootstrap/source.files` | `e315b81d0397c23b346ae7f4ec9d0f4b673ba3bb2b282e84021c53ae64f583dc` |
+| Installer `infrastructure/packages/bootstrap/bridge-runtime.files` | `0a9f0e4745125bbd25b80421e7d2eb30506f4c01b8135fe96c7e1535b5bd4a9b` |
+| Installer `infrastructure/packages/bootstrap/PKGBUILD` | `231d463baa562a51448bc7cc9e4fe757d243290c8af1eca5aff475e5c7654893` |
+| Installer `bin/workstationctl` | `6d8ef5c975a94392361e6da9c83288a663bf6adf4525228598c645fa0ad8d504` |
+| Installer `versions.lock` | `f2a39a52bca6133e57a28c1a2081f71e1ecf2736569b759814ef8676ecf97541` |
+| Installer `lib/workstation/serving_memory.py` | `bfd564ee63ae113676fc194d4330feeb410e4f82c5ed248b7765e6dc716fae96` |
+| Installer `lib/workstation/measurement.py` | `fad19694032f8672db16bf55944fd6d0f571c93b44bb3092dfa89a9cc537c301` |
+| Installer `lib/workstation/performance.sh` | `8a7fc3e5d81729d4df9a9c5d5b9575a473a1e8ef8c961ff09e0f67f39ca9c3e4` |
+| Installer `lib/workstation/serving.py` | `6708002e2a9f41bdff9ce94d932254b9b0c7b96cd10feeeaca53ee8b8eec4daa` |
+| Installer `lib/workstation/model_kernels.py` | `50ea3b11722306ea1a81323bf3f88d5357c6d898f99fca8f1f66d8e68e29ecad` |
+
+The installer package recipe checks its source archive digest, source manifest
+and `BUILD-IDENTITY`. No new installer package or installed build identity was
+generated or approved here. The candidate test checks the actual runtime-file
+closure and reports tool hashes. Runtime authorization still requires the
+separate root-owned installed manifest; the table is not a replacement for it.
+
+### Memory regression coverage
+
+- `TestCandidateInstallerMemoryContract` invokes the actual candidate planner
+  through `workstationctl`, using its own tiny cold/warm fixtures. It validates
+  the full Go output contract, patch/rollback hashes and conservative result;
+  altered runtime identity, capacity, averages, Pods, phases and shm refuse.
+  It also runs the candidate's `test_serving_memory.py` negative corpus for
+  duplicate/restarted Pods, foreign cgroups, final telemetry, pressure, shared
+  memory and CPU/model changes. No model weights or real benchmarks run.
+- `TestMemoryRealIntakeRetainsFailedEvidenceWithoutCluster` executes the real
+  helper intake/copy/journal path with fixture ownership/provenance hooks. It
+  retains failed private evidence, rejects drift and makes no cluster probe.
+  Other helper tests bind full templates, node identities, qualified model-file
+  hashes, effective launch settings, source authority and read-only restart state.
+- `TestPrivateOutputDurabilityAndExactTree` and
+  `TestPrivateArtifactEscapedWireBound` cover private exact-tree publication,
+  bounded wire encoding, sync/refusal and evidence retention. Filesystem tests
+  do not simulate physical power loss or prove installed UID enforcement.
+- Engine tests cover source drift, expiry, idempotency, no automatic apply,
+  unavailable generic inventory and later independent helper completion without
+  redispatch. `TestCLIAndDaemon` now exercises memory commands, owner-only reads,
+  import/export, private summary download and inspection after daemon restart.
+- Agents API tests use a mocked transport: fixed function allowlists, hostile
+  arguments/output, secret sentinels, turn identity, failed tools, API outages,
+  redirects, count/time/byte bounds and cancellation distinct from completion.
+  The API rechecks owner authentication for each tool and strips arbitrary text
+  before any cloud-bound serialization.
+- Real Chromium tests cover Resources unknown/incomplete/refused/candidate
+  states, live-style `ready-for-plan` UI semantics, explicit review without
+  approval, retained summaries and escaped advisory text. The live-style
+  preflight/provider responses are browser-only fixtures, not Linux or paid-API
+  qualification. Existing TLS/cookie, recovery, mobile, expiry and logout tests
+  remain enabled.
+
+### Repeat source checks
+
+Observed on macOS arm64 with the exact Go 1.27.1 toolchain:
+
+| Check run | Outcome |
+|---|---|
+| Focused uncached domain/API/adapter/helper/memory/engine/advisor/config/CLI tests | PASS |
+| `go test ./... -count=1` with actual candidate installer path | PASS; includes the candidate's Python memory regression corpus |
+| Uncached `TestCLIAndDaemon` | PASS; actual executable memory workflow and restart inspection |
+| Pinned and candidate `scripts/test-installer-contract.sh` invocations | PASS; known-good fixture retained separately |
+| Candidate memory contract with `CGO_ENABLED=1 go test -race` and `-count=1` | PASS; actual planner fixtures, not GPU execution |
+| `make check` | PASS: exact toolchain, fmt, vet, tests, race, generated/OpenAPI/manifests, build, module verification and govulncheck; no vulnerabilities found |
+| `make browser` | PASS; Chrome 152.0.7977.83 / Node v26.8.1; memory states, preflight-only review, and existing security/recovery flows |
+| `make package`, archive checksums and package inspection | PASS; Linux amd64 server/helper/worker/CLI and macOS arm64/amd64 CLI; private configuration examples and memory guide included |
+| Documentation audits and final diff checks | PASS; advisory writing checks only, not a security certification |
+| Linux/systemd gate inside `make check` | NOT RUN — compatible Linux systemd unavailable; target admission/RBAC also explicitly unqualified |
+
+From Bridge, set the candidate path to the separately reviewed source checkout.
+The command does not install or approve it:
+
+```sh
+BRIDGE_INSTALLER_MEMORY_CANDIDATE=/absolute/reviewed/installer \
+  GOTOOLCHAIN=local CGO_ENABLED=0 go test ./... -count=1
+env GOTOOLCHAIN=local CGO_ENABLED=0 go test ./internal/integration -run '^TestCLIAndDaemon$' -count=1 -v
+bash scripts/test-installer-contract.sh /absolute/reviewed/installer
+bash scripts/test-installer-contract.sh --candidate /absolute/reviewed/installer
+make check
+make browser
+make package
+(cd dist && shasum -a 256 -c SHA256SUMS)
+```
+
+The first catalog command preserves the known-good
+`67a506090e8ecf696190e0be55f865e3ce054d0e` fixture. The candidate commands do not
+replace it. Without `BRIDGE_INSTALLER_MEMORY_CANDIDATE`, the candidate memory
+test explicitly skips; a normal Go pass alone does not imply pair validation.
+
+Initial fixture attempts failed on a relative candidate path and macOS `/var`
+symlink aliases. Tests now resolve their disposable paths and use an explicit
+candidate path. A private-output fixture also needed explicit 0700 setup. An
+initial new browser fixture had invalid top-level `await`; its async wrapper
+was corrected. These were test setup failures, not target observations; no
+production path, permission or browser security checks were weakened.
+
+### Memory qualification still required
+
+**NOT RUN — target hardware unavailable:** actual non-root cold/warm collection,
+smaller-limit startup/steady memory, numerical/coding correctness, throughput,
+latency, DIMM rediscovery and safe rollback. Follow
+[MEMORY-BUDGETS.md](MEMORY-BUDGETS.md) for exact collection, import/export,
+candidate-test and preconditioned rollback commands, together with the existing
+[target qualification procedure](QUALIFICATION.md). Retain independent SSH and
+recovery access. A synthetic 33280-MiB candidate is not an observed saving.
+
+**NOT RUN — prepared Linux runtime unavailable:** installed helper service,
+root/reader access, cgroup enforcement, Kubernetes RBAC/admission and systemd
+behavior. Cross-built Linux binaries are not runtime evidence. The source gate
+reports systemd unavailable on this macOS host; no service, namespace or host
+security control was changed to obtain a pass.
+
+**NOT RUN — real Agents API/account/spending controls:** no key or paid request
+was used. The optional connection uses the actual documented Agents API, not
+Responses or the Agents SDK. Its documented session contract has no per-session
+hard spending ceiling; project spending controls require separate owner setup.
+Nonzero CPU-offload evidence export is explicitly unavailable with the selected
+collector. Backup/NAS restore, ISO/UEFI, gaming input/capture and simultaneous
+AI/gaming acceptance remain separate deliverables.
+
+## Initial implementation — 2026-09-08
+
 Verification date: **2026-09-08**. Development platform: macOS arm64, Go 1.27.1.
 Initial implementation and verification path:
 `/Users/uk-gr9yjx0l0y/Projects/Spry.ai-workstation-bridge`.

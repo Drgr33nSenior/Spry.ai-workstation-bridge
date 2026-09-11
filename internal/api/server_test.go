@@ -24,6 +24,7 @@ import (
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/engine"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/source"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/store"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/telemetry"
 )
 
 type fixture struct {
@@ -35,6 +36,10 @@ type fixture struct {
 }
 
 func setup(t *testing.T) *fixture {
+	return setupTelemetry(t, config.Telemetry{})
+}
+
+func setupTelemetry(t *testing.T, tc config.Telemetry) *fixture {
 	t.Helper()
 	dir, pathErr := filepath.EvalSymlinks(t.TempDir())
 	if pathErr != nil {
@@ -58,6 +63,10 @@ func setup(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	eng := engine.New(db, src, demo, "demo-workstation", 4, 10*time.Second)
+	eng.Telemetry, err = telemetry.New(context.Background(), tc)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err = eng.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +83,7 @@ func setup(t *testing.T) *fixture {
 	}
 	ts := httptest.NewUnstartedServer(nil)
 	origin := "http://" + ts.Listener.Addr().String()
-	ts.Config.Handler = api.New(config.Config{Mode: "demo", Target: "demo-workstation", AllowedHosts: []string{ts.Listener.Addr().String()}, ExternalURL: origin}, eng, nil).Handler()
+	ts.Config.Handler = api.New(config.Config{Mode: "demo", Target: "demo-workstation", AllowedHosts: []string{ts.Listener.Addr().String()}, ExternalURL: origin, Telemetry: tc}, eng, nil).Handler()
 	ts.Start()
 	f.server = ts
 	t.Cleanup(func() {
@@ -82,6 +91,7 @@ func setup(t *testing.T) *fixture {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		_ = eng.Close(ctx)
+		_ = eng.Telemetry.Shutdown(ctx)
 		_ = db.Close()
 	})
 	return f

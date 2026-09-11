@@ -59,16 +59,17 @@ type Configuration struct {
 func (c Configuration) ContentRevision() string { c.Revision = ""; return Hash(c) }
 
 type Draft struct {
-	Action         string        `json:"action"`
-	Target         string        `json:"target"`
-	SourceRevision string        `json:"source_revision"`
-	Model          string        `json:"model,omitempty"`
-	Profile        string        `json:"profile,omitempty"`
-	Recipe         string        `json:"recipe,omitempty"`
-	RecoveryID     string        `json:"recovery_id,omitempty"`
-	Serving        *Serving      `json:"serving,omitempty"`
-	Resources      *Resources    `json:"resources,omitempty"`
-	Caches         *CacheBudgets `json:"caches,omitempty"`
+	Action         string         `json:"action"`
+	Target         string         `json:"target"`
+	SourceRevision string         `json:"source_revision"`
+	Model          string         `json:"model,omitempty"`
+	Profile        string         `json:"profile,omitempty"`
+	Recipe         string         `json:"recipe,omitempty"`
+	RecoveryID     string         `json:"recovery_id,omitempty"`
+	Serving        *Serving       `json:"serving,omitempty"`
+	Resources      *Resources     `json:"resources,omitempty"`
+	Caches         *CacheBudgets  `json:"caches,omitempty"`
+	Memory         *MemoryRequest `json:"memory,omitempty"`
 }
 type Change struct {
 	Field  string `json:"field"`
@@ -272,9 +273,12 @@ func ValidateDraft(d Draft, c Configuration, inv Inventory) error {
 		return Fail("source_drift", "source changed; refresh configuration and create a new plan")
 	}
 	switch d.Action {
-	case "serving.configure", "resources.configure", "caches.configure", "serving.start", "serving.stop", "serving.restart", "model.stage", "model.verify", "profile.switch", "profile.restore", "hardware.refresh", "build.start", "cpu-policy.export", "operation.reconcile":
+	case "serving.configure", "resources.configure", "caches.configure", "serving.start", "serving.stop", "serving.restart", "model.stage", "model.verify", "profile.switch", "profile.restore", "hardware.refresh", "build.start", "cpu-policy.export", "operation.reconcile", "memory.evidence.import", "memory.plan.export":
 	default:
 		return Fail("unsupported", "unsupported operation")
+	}
+	if err := ValidateMemoryRequest(d); err != nil {
+		return err
 	}
 	if d.Serving != nil && d.Action != "serving.configure" {
 		return Fail("invalid", "serving fields belong only to serving.configure")

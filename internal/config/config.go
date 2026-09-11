@@ -27,19 +27,21 @@ type Config struct {
 	TLSKeyFile   string   `json:"tls_key_file"`
 	// BrowserSessions is an explicit live-policy opt-in. A live loopback HTTP
 	// listener remains available to the bearer-authenticated CLI only.
-	BrowserSessions         bool   `json:"browser_sessions"`
-	OwnerUID                int    `json:"owner_uid"`
-	Target                  string `json:"target"`
-	Environment             string `json:"environment"`
-	ReferenceRoot           string `json:"reference_root"`
-	ModelRoot               string `json:"model_root"`
-	CompilerCacheRoot       string `json:"compiler_cache_root"`
-	ShaderCacheRoot         string `json:"shader_cache_root"`
-	HostSocket              string `json:"host_socket"`
-	WorkerSocket            string `json:"worker_socket"`
-	ClientBaseURL           string `json:"client_base_url"`
-	QueueDepth              int    `json:"queue_depth"`
-	OperationTimeoutSeconds int    `json:"operation_timeout_seconds"`
+	BrowserSessions         bool      `json:"browser_sessions"`
+	OwnerUID                int       `json:"owner_uid"`
+	Target                  string    `json:"target"`
+	Environment             string    `json:"environment"`
+	ReferenceRoot           string    `json:"reference_root"`
+	ModelRoot               string    `json:"model_root"`
+	CompilerCacheRoot       string    `json:"compiler_cache_root"`
+	ShaderCacheRoot         string    `json:"shader_cache_root"`
+	HostSocket              string    `json:"host_socket"`
+	WorkerSocket            string    `json:"worker_socket"`
+	ClientBaseURL           string    `json:"client_base_url"`
+	QueueDepth              int       `json:"queue_depth"`
+	OperationTimeoutSeconds int       `json:"operation_timeout_seconds"`
+	Telemetry               Telemetry `json:"telemetry"`
+	Advisor                 Advisor   `json:"advisor"`
 }
 
 const (
@@ -202,6 +204,15 @@ func Load(path string) (Config, error) {
 	return c, nil
 }
 func (c Config) Validate() error {
+	if err := c.Advisor.Validate(); err != nil {
+		return err
+	}
+	if c.Mode == "demo" && c.Advisor.Enabled {
+		return errors.New("demo cannot contact a live advisory provider")
+	}
+	if err := c.Telemetry.Validate(); err != nil {
+		return err
+	}
 	if c.Mode != "demo" && c.Mode != "live" {
 		return errors.New("mode must explicitly be demo or live")
 	}

@@ -8,6 +8,7 @@
   "tls_cert_file": "/etc/bridge/tls/server.crt",
   "tls_key_file": "/etc/bridge/tls/server.key",
   "browser_sessions": true,
+  "telemetry": {"enabled": false, "otlp_endpoint": "", "trace_sample_ratio": 0, "prometheus_url": ""},
   "owner_uid": 1000,
   "target": "replace-with-reviewed-node-name",
   "environment": "dev",

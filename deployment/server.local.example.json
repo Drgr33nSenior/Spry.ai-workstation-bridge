@@ -8,6 +8,7 @@
   "tls_cert_file": "",
   "tls_key_file": "",
   "browser_sessions": false,
+  "telemetry": {"enabled": false, "otlp_endpoint": "", "trace_sample_ratio": 0, "prometheus_url": ""},
   "owner_uid": 1000,
   "target": "replace-with-reviewed-node-name",
   "environment": "dev",

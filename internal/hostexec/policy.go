@@ -31,6 +31,7 @@ type SessionQualification struct {
 	ConfigMaps   map[string]string `json:"config_maps"`
 }
 type Policy struct {
+	MemorySources           map[string]MemorySource         `json:"memory_sources,omitempty"`
 	Version                 int                             `json:"version"`
 	AllowedUID              uint32                          `json:"allowed_uid"`
 	Socket                  string                          `json:"socket"`
@@ -82,6 +83,9 @@ func LoadPolicy(path string) (Policy, error) {
 	return p, p.verifyRuntime()
 }
 func (p Policy) validate() error {
+	if err := p.validateMemoryPolicy(); err != nil {
+		return err
+	}
 	if p.Version != ContractVersion || p.AllowedUID == 0 {
 		return errors.New("contract v1 and a dedicated non-root API UID are required")
 	}

@@ -16,11 +16,15 @@ import (
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/admin"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/client"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/domain"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/memory"
 )
 
 const usage = `Usage: bridgectl [--context FILE] [--endpoint ORIGIN] [--credential-file FILE] [--ca-file FILE] [--deadline 30s] [--json] COMMAND
 
-Read: status | models | config | resources | profiles | builds | caches | harnesses | operations [ID]
+Read: status | models | config | resources | profiles | builds | caches | harnesses | operations [ID] | memory
+Memory: memory-preview --file DRAFT.json | memory-advice --file REQUEST.json
+        memory-inspect OPERATION_ID
+Local evidence: memory-seal --directory ABSOLUTE_DIRECTORY --source-revision SHA256 --hardware-sha256 SHA256 --boot-id UUID
 Source: export-source --output NEW_FILE
 Artifact: artifact OPERATION_ID --name ARTIFACT_NAME --output NEW_FILE
 Plan: plan --file DRAFT.json
@@ -37,6 +41,7 @@ Local administration (service stopped):
 
 Global flags precede the command. Credentials are read from owner-only files, never command arguments.
 Plans use the same typed JSON contract and server validation as the web UI. Apply requires the exact target.
+Memory previews and advice do not apply plans. Memory exports remain unqualified; sealing creates a new local manifest.
 Exit codes: 0 success; 2 usage/validation; 3 authentication/authorization; 4 conflict; 5 unavailable/transport;
             6 failed/cancelled operation; 7 recovery required; 8 deadline exceeded.
 `
@@ -68,6 +73,11 @@ func Run(args []string, out, errout io.Writer) int {
 	}
 	if rest[0] == "admin" {
 		return runAdmin(rest[1:], out)
+	}
+	if rest[0] == "memory-seal" {
+		ctx, cancel := context.WithTimeout(context.Background(), *deadline)
+		defer cancel()
+		return runMemorySeal(ctx, rest[1:], out)
 	}
 	if rest[0] == "harness" && len(rest) > 1 && (rest[1] == "launch" || rest[1] == "configure") {
 		if rest[1] == "launch" || containsFlag(rest, "--bundle") {
@@ -118,6 +128,12 @@ func Run(args []string, out, errout io.Writer) int {
 		}
 		for _, artifact := range operation.Artifacts {
 			if artifact.Name == *name {
+				if operation.Plan.Draft.Action == "memory.plan.export" && memory.PrivateName(artifact.Name) {
+					artifact, err = fetchMemoryArtifact(ctx, c, operationID, artifact)
+					if err != nil {
+						return report(out, err)
+					}
+				}
 				if err := client.WriteArtifact(artifact, *path); err != nil {
 					return report(out, err)
 				}
@@ -146,7 +162,7 @@ func Run(args []string, out, errout io.Writer) int {
 			return report(out, err)
 		}
 		return output(out, map[string]string{"status": "exported", "output": *path, "revision": cfg.Revision})
-	case "status", "models", "config", "resources", "profiles", "builds", "caches", "harnesses", "operations":
+	case "status", "models", "config", "resources", "profiles", "builds", "caches", "harnesses", "operations", "memory":
 		path := "/api/v1/" + command
 		if command == "operations" && len(rest) == 1 {
 			if !validID(rest[0]) {
@@ -161,6 +177,8 @@ func Run(args []string, out, errout io.Writer) int {
 			return report(out, err)
 		}
 		return output(out, result)
+	case "memory-preview", "memory-advice", "memory-inspect":
+		return runMemory(ctx, c, command, rest, out)
 	case "plan":
 		flags := flags("plan")
 		file := flags.String("file", "", "typed draft JSON")

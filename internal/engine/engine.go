@@ -13,6 +13,7 @@ import (
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/domain"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/source"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/store"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/telemetry"
 )
 
 type Engine struct {
@@ -22,12 +23,14 @@ type Engine struct {
 	Target  string
 	Depth   int
 	Timeout time.Duration
-	mu      sync.Mutex
-	cancel  map[string]context.CancelFunc
-	wake    chan struct{}
-	ctx     context.Context
-	stop    context.CancelFunc
-	done    chan struct{}
+	// Telemetry is attached before Start and never controls operation admission.
+	Telemetry *telemetry.Recorder
+	mu        sync.Mutex
+	cancel    map[string]context.CancelFunc
+	wake      chan struct{}
+	ctx       context.Context
+	stop      context.CancelFunc
+	done      chan struct{}
 }
 
 func New(db *store.Store, src *source.Source, adapter domain.Adapter, target string, depth int, timeout time.Duration) *Engine {
@@ -129,6 +132,10 @@ func (e *Engine) CreatePlan(ctx context.Context, a auth.Actor, d domain.Draft) (
 	return p, err
 }
 func (e *Engine) preflight(ctx context.Context, d domain.Draft, c domain.Configuration) (domain.Inventory, domain.Preview, error) {
+	if domain.MemoryAction(d.Action) {
+		pv, err := e.Adapter.Validate(ctx, d, c)
+		return domain.Inventory{Target: e.Target}, pv, err
+	}
 	var recovery domain.Preview
 	if d.RecoveryID != "" || d.Action == "operation.reconcile" {
 		var err error
@@ -394,6 +401,14 @@ func (e *Engine) progress(id string, p domain.Progress) error {
 func (e *Engine) execute(op domain.Operation) {
 	ctx, cancel := context.WithTimeout(e.ctx, e.Timeout)
 	defer cancel()
+	ctx, observed := e.Telemetry.Operation(ctx, op.Plan.Draft.Action)
+	defer func() {
+		state := "unknown"
+		if current, err := e.Operation(op.ID); err == nil {
+			state = current.State
+		}
+		observed(state)
+	}()
 	e.mu.Lock()
 	e.cancel[op.ID] = cancel
 	e.mu.Unlock()
@@ -517,6 +532,9 @@ func (e *Engine) finish(id string, r domain.Result) error {
 		o, ok := s.Operations[id]
 		if !ok {
 			return fmt.Errorf("operation missing")
+		}
+		if domain.MemoryAction(o.Plan.Draft.Action) && (r.RecoveryRequired || r.State == "recovery-required" || r.State == "running" || r.State == "queued") {
+			r = domain.Result{State: "failed", Phase: "read-only-interrupted", Message: "Memory evidence/export outcome unavailable. Inspect the independent helper operation; retained evidence is not validated and no GPU recovery or workload mutation was authorized."}
 		}
 		o.State = r.State
 		o.Phase = r.Phase

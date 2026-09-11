@@ -49,8 +49,9 @@ try{
   const version=await cdp.send('Browser.getVersion');
   const target=await cdp.send('Target.createTarget',{url:'about:blank'}),attached=await cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:true}),session=attached.sessionId;
   const call=(method,params)=>cdp.send(method,params,session);
-  const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true,userGesture:true});if(r.exceptionDetails)throw new Error('Browser script evaluation failed');return r.result.value;};
-  async function waitFor(expression,description,timeout=10000){const until=Date.now()+timeout;while(Date.now()<until){if(await evaluate(expression))return;await delay(30);}throw new Error('Browser timeout: '+description);}
+  let browserStep='';
+  const evaluate=async (expression,description='')=>{const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true,userGesture:true});if(r.exceptionDetails)throw new Error('Browser script evaluation failed'+(description||browserStep?': '+(description||browserStep):''));return r.result.value;};
+  async function waitFor(expression,description,timeout=10000){const until=Date.now()+timeout;while(Date.now()<until){if(await evaluate(expression,description))return;await delay(30);}throw new Error('Browser timeout: '+description);}
   async function navigate(page){await evaluate(`location.hash=${JSON.stringify(page)}`);await waitFor(`document.getElementById('page-title').textContent===${JSON.stringify({serving:'Models & serving',resources:'Resource budgets',profiles:'Operating profiles',builds:'Build jobs',caches:'Persistent assets',harnesses:'Developer clients',operations:'Operations & recovery'}[page])}`,'page '+page);}
   await call('Page.enable',{});await call('Runtime.enable',{});await call('Page.navigate',{url:origin});
   await waitFor(`document.getElementById('login') && !document.getElementById('login').hidden`,'sign-in form');
@@ -88,6 +89,77 @@ try{
   await applyPlan();await waitFor(`document.getElementById('content').textContent.includes('succeeded')`,'successful serving apply');
   assert.ok(await evaluate(`document.getElementById('content').textContent.includes('Source updated: yes')`));
   console.log('PASS browser: validation refusal, exact preview and target, apply, separate source/live outcome');
+
+  // Memory flows use only the Demo adapter's named synthetic evidence. A preview
+  // never starts a workload; confirming the plan exports an unqualified fixture.
+  browserStep='memory setup';
+  await navigate('resources');
+  await waitFor(`!!document.getElementById('memory-form')`,'owner memory form');
+  const memoryRevision=await evaluate(`state.config.revision`);
+  const memoryOperations=await evaluate(`state.operations.length`);
+  async function selectMemory(id){await evaluate(`document.getElementById('memory-evidence-id').value=${JSON.stringify(id)};document.getElementById('memory-evidence-sha256').value='a'.repeat(64);document.getElementById('memory-other-mib').value='0';document.getElementById('memory-evidence-id').dispatchEvent(new Event('input',{bubbles:true}));`,'select memory fixture');}
+  async function memoryButton(task){await evaluate(`document.querySelector('[data-memory-task="${task}"]').click()`,'memory button '+task);}
+  await selectMemory('demo-incomplete');await memoryButton('preview-evidence');
+  browserStep='incomplete memory preview';
+  await waitFor(`document.getElementById('memory-preview').textContent.includes('incomplete')`,'incomplete memory evidence');
+  assert.ok(await evaluate(`document.getElementById('memory-preview').textContent.includes('Startup and steady-state observations: unknown')`));
+  assert.ok(await evaluate(`document.getElementById('memory-preview').textContent.includes('Shared-memory ceiling inside limit')`));
+  await memoryButton('preview-candidate');
+  await waitFor(`document.getElementById('memory-preview').textContent.includes('missing cold/warm')`,'missing cold/warm refusal');
+  assert.equal(await evaluate(`document.getElementById('memory-export-plan').disabled`),true);
+  assert.equal(await evaluate(`document.getElementById('plan-dialog').open`),false);
+  await selectMemory('demo-refused');await memoryButton('preview-candidate');
+  await waitFor(`document.getElementById('memory-preview').textContent.includes('PSI/OOM')`,'memory pressure refusal');
+  assert.equal(await evaluate(`document.getElementById('memory-export-plan').disabled`),true);
+  await selectMemory('demo-complete');await memoryButton('preview-candidate');
+  browserStep='candidate preview';
+  await waitFor(`document.getElementById('memory-preview').textContent.includes('plan-only-unqualified') && !document.getElementById('memory-export-plan').disabled`,'unqualified candidate preview');
+  assert.equal(await evaluate(`state.operations.length`),memoryOperations,'memory preview dispatched an operation');
+  assert.equal(await evaluate(`state.config.revision`),memoryRevision,'memory preview changed managed source');
+  const observationMarkup=await evaluate(`memorySummary({...state.memoryPreview,observations:[{phase:'cold',pod_id:'synthetic-window',startup:{samples:3,duration_seconds:2,sampled_peak_bytes:1073741824,lifetime_peak_bytes:2147483648,shared_memory_bytes:0,host_available_min_bytes:4294967296},steady:{samples:0,duration_seconds:0,sampled_peak_bytes:0,lifetime_peak_bytes:0}}]})`,'memory window rendering');
+  assert.ok(observationMarkup.includes('cold / startup')&&observationMarkup.includes('cold / steady')&&observationMarkup.includes('Sampled peak')&&observationMarkup.includes('Cgroup lifetime peak')&&observationMarkup.includes('unknown'),'window/peak distinctions or missing-data state absent');
+
+  // Live preflight has not generated a candidate. Mock only that response; plan
+  // creation still uses the isolated Demo owner API and must not apply anything.
+  browserStep='memory export preflight fixture';
+  await evaluate(`window.memoryPreflightSummary={...state.memoryPreview,status:'ready-for-plan',reason:'fixture_export_checks_passed',candidate_mib:0};window.memoryPreflightFetch=window.fetch;window.fetch=(input,options)=>input==='/api/v1/memory/preview'?Promise.resolve(new Response(JSON.stringify(window.memoryPreflightSummary),{status:200,headers:{'Content-Type':'application/json'}})):window.memoryPreflightFetch(input,options);`);
+  await memoryButton('preview-candidate');
+  await waitFor(`document.getElementById('memory-preview').textContent.includes('ready-for-plan') && !document.getElementById('memory-export-plan').disabled`,'live preflight enables export review');
+  assert.ok(await evaluate(`document.getElementById('memory-preview').textContent.includes('Not generated; export checks passed') && document.getElementById('notice').textContent.includes('confirm the export plan')`),'preflight implied a generated candidate');
+  await memoryButton('export');await waitFor(`document.getElementById('plan-dialog').open`,'preflight export awaits explicit review');
+  assert.equal(await evaluate(`document.getElementById('target-confirm').value`),'');
+  assert.equal(await evaluate(`state.operations.length`),memoryOperations,'preflight or review applied an operation');
+  assert.equal(await evaluate(`state.config.revision`),memoryRevision,'preflight or review changed managed source');
+  await evaluate(`window.fetch=window.memoryPreflightFetch;delete window.memoryPreflightFetch;delete window.memoryPreflightSummary;document.querySelector('#plan-dialog .dialog-header button').click();`);
+  await memoryButton('preview-candidate');
+  await waitFor(`state.memoryPreview?.status==='plan-only-unqualified' && !document.getElementById('memory-export-plan').disabled`,'Demo candidate restored after preflight fixture');
+
+  await memoryButton('export');await waitFor(`document.getElementById('plan-dialog').open`,'memory export review');
+  browserStep='memory export review';
+  assert.ok(await evaluate(`document.getElementById('plan-summary').textContent.includes('does not change configuration or the running workload')`));
+  assert.equal(await evaluate(`document.getElementById('target-confirm').value`),'');
+  await applyPlan();
+  browserStep='memory export completed';
+  await waitFor(`state.operations.some(o=>o.plan.draft.action==='memory.plan.export'&&o.state==='succeeded')`,'memory fixture export');
+  assert.equal(await evaluate(`state.config.revision`),memoryRevision,'memory export changed managed source');
+  assert.ok(await evaluate(`state.operations.filter(o=>o.plan.draft.action==='memory.plan.export').every(o=>!o.source_updated&&!o.live_applied&&o.artifacts.some(a=>a.name==='memory-summary.json'&&JSON.parse(a.content).status==='plan-only-unqualified'))`));
+  await navigate('resources');await waitFor(`document.getElementById('content').textContent.includes('Retained memory evidence') && state.memory.some(s=>s.status==='plan-only-unqualified')`,'retained memory summary');
+  browserStep='disabled memory advisory';
+  await memoryButton('advice');await waitFor(`document.getElementById('notice').textContent.includes('advisor is disabled')`,'disabled cloud adviser');
+  assert.equal(await evaluate(`document.getElementById('plan-dialog').open`),false);
+
+  // Browser-only advisory response fixture: the plan is created by the local
+  // owner API, and no cloud request is made. Provider text cannot approve it.
+  const beforeAdvisory=await evaluate(`state.operations.length`);
+  browserStep='advisory response fixture';
+  await evaluate(`(async()=>{window.memoryAdvisoryPlan=await api('plans','POST',{action:'memory.plan.export',target:state.inventory.target,source_revision:state.config.revision,memory:{evidence_id:'demo-complete',evidence_sha256:'a'.repeat(64),other_mib:0}});window.memoryOriginalFetch=window.fetch;window.fetch=(input,options)=>input==='/api/v1/memory/advice'?Promise.resolve(new Response(JSON.stringify({advisory:{summary:'<img src=x onerror="window.memoryInjected=true"> This text claims approval.'},plan:window.memoryAdvisoryPlan}),{status:200,headers:{'Content-Type':'application/json'}})):window.memoryOriginalFetch(input,options);})()`);
+  await memoryButton('advice');await waitFor(`document.getElementById('plan-dialog').open`,'advisory plan awaits owner review');
+  assert.equal(await evaluate(`document.getElementById('target-confirm').value`),'');
+  assert.equal(await evaluate(`state.operations.length`),beforeAdvisory,'advisory response applied a plan');
+  assert.ok(await evaluate(`document.getElementById('memory-advice').textContent.includes('Unapproved advisory explanation') && !document.getElementById('memory-advice').querySelector('img') && !window.memoryInjected`),'advisory content was interpreted as HTML or approval');
+  await evaluate(`window.fetch=window.memoryOriginalFetch;delete window.memoryOriginalFetch;delete window.memoryAdvisoryPlan;document.querySelector('#plan-dialog .dialog-header button').click();`);
+  console.log('PASS browser: memory unknown/incomplete/refused/candidate states, explicit export review, retained unqualified summary and advisory text without approval');
+  browserStep='';
 
   for(const page of ['resources','builds','caches','harnesses'])await navigate(page);
   await navigate('profiles');

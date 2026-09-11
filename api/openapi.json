@@ -1286,6 +1286,2088 @@
         "x-minimum-role": "viewer"
       }
     },
+    "/api/v1/memory": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allocatable_mib": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "artifacts": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "content": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "qualification": {
+                              "type": "string"
+                            },
+                            "sha256": {
+                              "type": "string"
+                            },
+                            "size": {
+                              "format": "int64",
+                              "type": "integer"
+                            },
+                            "source_revision": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "sha256",
+                            "size",
+                            "source_revision",
+                            "qualification"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "baseline_mib": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "candidate_mib": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "cold": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "envelope_bytes": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "evidence_id": {
+                        "type": "string"
+                      },
+                      "headroom_bytes": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "limitations": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "limited_mib": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "minimum_candidate_mib": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "observations": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "phase": {
+                              "type": "string"
+                            },
+                            "pod_id": {
+                              "type": "string"
+                            },
+                            "startup": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "duration_seconds": {
+                                  "type": "number"
+                                },
+                                "host_available_min_bytes": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "lifetime_peak_bytes": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "sampled_peak_bytes": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "samples": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "shared_memory_bytes": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "samples",
+                                "duration_seconds",
+                                "sampled_peak_bytes",
+                                "lifetime_peak_bytes",
+                                "shared_memory_bytes",
+                                "host_available_min_bytes"
+                              ],
+                              "type": "object"
+                            },
+                            "steady": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "duration_seconds": {
+                                  "type": "number"
+                                },
+                                "host_available_min_bytes": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "lifetime_peak_bytes": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "sampled_peak_bytes": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "samples": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "shared_memory_bytes": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "samples",
+                                "duration_seconds",
+                                "sampled_peak_bytes",
+                                "lifetime_peak_bytes",
+                                "shared_memory_bytes",
+                                "host_available_min_bytes"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "phase",
+                            "pod_id",
+                            "startup",
+                            "steady"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "other_mib": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "preconditions": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "sha256": {
+                        "type": "string"
+                      },
+                      "shared_memory_mib": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "warm": {
+                        "format": "int64",
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "evidence_id",
+                      "sha256",
+                      "status",
+                      "reason",
+                      "baseline_mib",
+                      "limited_mib",
+                      "candidate_mib",
+                      "minimum_candidate_mib",
+                      "shared_memory_mib",
+                      "other_mib",
+                      "allocatable_mib",
+                      "envelope_bytes",
+                      "headroom_bytes",
+                      "cold",
+                      "warm",
+                      "observations",
+                      "preconditions",
+                      "limitations",
+                      "artifacts"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "Successful management response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
+          }
+        },
+        "summary": "Read retained unqualified memory evidence summaries",
+        "x-minimum-role": "owner"
+      }
+    },
+    "/api/v1/memory/advice": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Required with browser session cookies; Origin must match configured management origin. Bearer requests do not require browser headers.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "evidence_id": {
+                    "type": "string"
+                  },
+                  "evidence_sha256": {
+                    "type": "string"
+                  },
+                  "other_mib": {
+                    "format": "int64",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "evidence_id",
+                  "evidence_sha256",
+                  "other_mib"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "advisory": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "cancellation_accepted": {
+                          "type": "boolean"
+                        },
+                        "cancellation_requested": {
+                          "type": "boolean"
+                        },
+                        "session_id": {
+                          "type": "string"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "tool_calls": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "tool_failures": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "usage": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "input_tokens": {
+                              "format": "int64",
+                              "type": "integer"
+                            },
+                            "output_tokens": {
+                              "format": "int64",
+                              "type": "integer"
+                            },
+                            "total_tokens": {
+                              "format": "int64",
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "input_tokens",
+                            "output_tokens",
+                            "total_tokens"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "session_id",
+                        "summary",
+                        "tool_calls",
+                        "tool_failures",
+                        "usage",
+                        "cancellation_requested",
+                        "cancellation_accepted"
+                      ],
+                      "type": "object"
+                    },
+                    "plan": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "actor": {
+                              "type": "string"
+                            },
+                            "created_at": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "desired": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "caches": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "build_jobs": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "build_memory_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "compiler_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "models_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "scratch_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "shader_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "models_gib",
+                                    "compiler_gib",
+                                    "shader_gib",
+                                    "build_jobs",
+                                    "build_memory_mib",
+                                    "scratch_gib"
+                                  ],
+                                  "type": "object"
+                                },
+                                "resources": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "cpu": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "gpu_count": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "memory_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "physical_gpu": {
+                                      "type": "string"
+                                    },
+                                    "shared_memory_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "cpu",
+                                    "memory_mib",
+                                    "shared_memory_mib",
+                                    "gpu_count"
+                                  ],
+                                  "type": "object"
+                                },
+                                "revision": {
+                                  "type": "string"
+                                },
+                                "serving": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "concurrency": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "context": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "cpu_offload_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "max_output_tokens": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "max_request_tokens": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "memory_fraction": {
+                                      "type": "number"
+                                    },
+                                    "model": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "model",
+                                    "context",
+                                    "concurrency",
+                                    "memory_fraction",
+                                    "cpu_offload_gib",
+                                    "max_request_tokens",
+                                    "max_output_tokens"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "revision",
+                                "serving",
+                                "resources",
+                                "caches"
+                              ],
+                              "type": "object"
+                            },
+                            "draft": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "action": {
+                                  "type": "string"
+                                },
+                                "caches": {
+                                  "anyOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "build_jobs": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "build_memory_mib": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "compiler_gib": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "models_gib": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "scratch_gib": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "shader_gib": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": [
+                                        "models_gib",
+                                        "compiler_gib",
+                                        "shader_gib",
+                                        "build_jobs",
+                                        "build_memory_mib",
+                                        "scratch_gib"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "memory": {
+                                  "anyOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "evidence_id": {
+                                          "type": "string"
+                                        },
+                                        "evidence_sha256": {
+                                          "type": "string"
+                                        },
+                                        "other_mib": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": [
+                                        "evidence_id",
+                                        "evidence_sha256",
+                                        "other_mib"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "model": {
+                                  "type": "string"
+                                },
+                                "profile": {
+                                  "type": "string"
+                                },
+                                "recipe": {
+                                  "type": "string"
+                                },
+                                "recovery_id": {
+                                  "type": "string"
+                                },
+                                "resources": {
+                                  "anyOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "cpu": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "gpu_count": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "memory_mib": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "physical_gpu": {
+                                          "type": "string"
+                                        },
+                                        "shared_memory_mib": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": [
+                                        "cpu",
+                                        "memory_mib",
+                                        "shared_memory_mib",
+                                        "gpu_count"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "serving": {
+                                  "anyOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "concurrency": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "context": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "cpu_offload_gib": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "max_output_tokens": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "max_request_tokens": {
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "memory_fraction": {
+                                          "type": "number"
+                                        },
+                                        "model": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "model",
+                                        "context",
+                                        "concurrency",
+                                        "memory_fraction",
+                                        "cpu_offload_gib",
+                                        "max_request_tokens",
+                                        "max_output_tokens"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "source_revision": {
+                                  "type": "string"
+                                },
+                                "target": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "action",
+                                "target",
+                                "source_revision"
+                              ],
+                              "type": "object"
+                            },
+                            "expires_at": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "hash": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "preview": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "changes": {
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "after": {},
+                                      "before": {},
+                                      "field": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "field",
+                                      "before",
+                                      "after"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": [
+                                    "array",
+                                    "null"
+                                  ]
+                                },
+                                "consequences": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": [
+                                    "array",
+                                    "null"
+                                  ]
+                                },
+                                "preconditions": {
+                                  "additionalProperties": {
+                                    "type": "string"
+                                  },
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ]
+                                },
+                                "warnings": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": [
+                                    "array",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "changes",
+                                "consequences",
+                                "warnings",
+                                "preconditions"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "actor",
+                            "draft",
+                            "desired",
+                            "preview",
+                            "created_at",
+                            "expires_at",
+                            "hash"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "advisory"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful management response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
+          }
+        },
+        "summary": "Optional bounded Agents API advisory; no approval or application authority",
+        "x-minimum-role": "owner"
+      }
+    },
+    "/api/v1/memory/artifact": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Required with browser session cookies; Origin must match configured management origin. Bearer requests do not require browser headers.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operation_id",
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "qualification": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "source_revision": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "sha256",
+                    "size",
+                    "source_revision",
+                    "qualification"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful management response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
+          }
+        },
+        "summary": "Export owner-private preconditioned candidate or rollback; recheck identities",
+        "x-minimum-role": "owner"
+      }
+    },
+    "/api/v1/memory/inspect": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Required with browser session cookies; Origin must match configured management origin. Bearer requests do not require browser headers.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "operation_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operation_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actor": {
+                      "type": "string"
+                    },
+                    "artifacts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "content": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "qualification": {
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "source_revision": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "sha256",
+                          "size",
+                          "source_revision",
+                          "qualification"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "cancel_requested": {
+                      "type": "boolean"
+                    },
+                    "created_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "dispatched": {
+                      "type": "boolean"
+                    },
+                    "events": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bytes": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "phase": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "phase",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live_applied": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "plan": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "actor": {
+                          "type": "string"
+                        },
+                        "created_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "desired": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "caches": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "build_jobs": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "build_memory_mib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "compiler_gib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "models_gib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "scratch_gib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "shader_gib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "models_gib",
+                                "compiler_gib",
+                                "shader_gib",
+                                "build_jobs",
+                                "build_memory_mib",
+                                "scratch_gib"
+                              ],
+                              "type": "object"
+                            },
+                            "resources": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "cpu": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "gpu_count": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "memory_mib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "physical_gpu": {
+                                  "type": "string"
+                                },
+                                "shared_memory_mib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "cpu",
+                                "memory_mib",
+                                "shared_memory_mib",
+                                "gpu_count"
+                              ],
+                              "type": "object"
+                            },
+                            "revision": {
+                              "type": "string"
+                            },
+                            "serving": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "concurrency": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "context": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "cpu_offload_gib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "max_output_tokens": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "max_request_tokens": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "memory_fraction": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "model",
+                                "context",
+                                "concurrency",
+                                "memory_fraction",
+                                "cpu_offload_gib",
+                                "max_request_tokens",
+                                "max_output_tokens"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "revision",
+                            "serving",
+                            "resources",
+                            "caches"
+                          ],
+                          "type": "object"
+                        },
+                        "draft": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "action": {
+                              "type": "string"
+                            },
+                            "caches": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "build_jobs": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "build_memory_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "compiler_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "models_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "scratch_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "shader_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "models_gib",
+                                    "compiler_gib",
+                                    "shader_gib",
+                                    "build_jobs",
+                                    "build_memory_mib",
+                                    "scratch_gib"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "memory": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "evidence_id": {
+                                      "type": "string"
+                                    },
+                                    "evidence_sha256": {
+                                      "type": "string"
+                                    },
+                                    "other_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "evidence_id",
+                                    "evidence_sha256",
+                                    "other_mib"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "model": {
+                              "type": "string"
+                            },
+                            "profile": {
+                              "type": "string"
+                            },
+                            "recipe": {
+                              "type": "string"
+                            },
+                            "recovery_id": {
+                              "type": "string"
+                            },
+                            "resources": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "cpu": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "gpu_count": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "memory_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "physical_gpu": {
+                                      "type": "string"
+                                    },
+                                    "shared_memory_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "cpu",
+                                    "memory_mib",
+                                    "shared_memory_mib",
+                                    "gpu_count"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "serving": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "concurrency": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "context": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "cpu_offload_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "max_output_tokens": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "max_request_tokens": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "memory_fraction": {
+                                      "type": "number"
+                                    },
+                                    "model": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "model",
+                                    "context",
+                                    "concurrency",
+                                    "memory_fraction",
+                                    "cpu_offload_gib",
+                                    "max_request_tokens",
+                                    "max_output_tokens"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "source_revision": {
+                              "type": "string"
+                            },
+                            "target": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "action",
+                            "target",
+                            "source_revision"
+                          ],
+                          "type": "object"
+                        },
+                        "expires_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "hash": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "preview": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "changes": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "after": {},
+                                  "before": {},
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "before",
+                                  "after"
+                                ],
+                                "type": "object"
+                              },
+                              "type": [
+                                "array",
+                                "null"
+                              ]
+                            },
+                            "consequences": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": [
+                                "array",
+                                "null"
+                              ]
+                            },
+                            "preconditions": {
+                              "additionalProperties": {
+                                "type": "string"
+                              },
+                              "type": [
+                                "object",
+                                "null"
+                              ]
+                            },
+                            "warnings": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": [
+                                "array",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "changes",
+                            "consequences",
+                            "warnings",
+                            "preconditions"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "actor",
+                        "draft",
+                        "desired",
+                        "preview",
+                        "created_at",
+                        "expires_at",
+                        "hash"
+                      ],
+                      "type": "object"
+                    },
+                    "recovery_required": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "source_updated": {
+                      "type": "boolean"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "updated_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "actor",
+                    "plan",
+                    "state",
+                    "phase",
+                    "message",
+                    "revision",
+                    "created_at",
+                    "updated_at",
+                    "source_updated",
+                    "dispatched",
+                    "live_applied",
+                    "recovery_required",
+                    "cancel_requested",
+                    "events"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful management response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
+          }
+        },
+        "summary": "Reconcile only the original read-only helper outcome; never redispatch",
+        "x-minimum-role": "owner"
+      }
+    },
+    "/api/v1/memory/preview": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Required with browser session cookies; Origin must match configured management origin. Bearer requests do not require browser headers.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "caches": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "build_jobs": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "build_memory_mib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "compiler_gib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "models_gib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "scratch_gib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "shader_gib": {
+                            "format": "int64",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "models_gib",
+                          "compiler_gib",
+                          "shader_gib",
+                          "build_jobs",
+                          "build_memory_mib",
+                          "scratch_gib"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "memory": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "evidence_id": {
+                            "type": "string"
+                          },
+                          "evidence_sha256": {
+                            "type": "string"
+                          },
+                          "other_mib": {
+                            "format": "int64",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "evidence_id",
+                          "evidence_sha256",
+                          "other_mib"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "recipe": {
+                    "type": "string"
+                  },
+                  "recovery_id": {
+                    "type": "string"
+                  },
+                  "resources": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "cpu": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "gpu_count": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "memory_mib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "physical_gpu": {
+                            "type": "string"
+                          },
+                          "shared_memory_mib": {
+                            "format": "int64",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "cpu",
+                          "memory_mib",
+                          "shared_memory_mib",
+                          "gpu_count"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "serving": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "concurrency": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "context": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "cpu_offload_gib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "max_output_tokens": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "max_request_tokens": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "memory_fraction": {
+                            "type": "number"
+                          },
+                          "model": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "model",
+                          "context",
+                          "concurrency",
+                          "memory_fraction",
+                          "cpu_offload_gib",
+                          "max_request_tokens",
+                          "max_output_tokens"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source_revision": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action",
+                  "target",
+                  "source_revision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "allocatable_mib": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "artifacts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "content": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "qualification": {
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "source_revision": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "sha256",
+                          "size",
+                          "source_revision",
+                          "qualification"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "baseline_mib": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "candidate_mib": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "cold": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "envelope_bytes": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "evidence_id": {
+                      "type": "string"
+                    },
+                    "headroom_bytes": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "limitations": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "limited_mib": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "minimum_candidate_mib": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "observations": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "phase": {
+                            "type": "string"
+                          },
+                          "pod_id": {
+                            "type": "string"
+                          },
+                          "startup": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "duration_seconds": {
+                                "type": "number"
+                              },
+                              "host_available_min_bytes": {
+                                "format": "int64",
+                                "type": "integer"
+                              },
+                              "lifetime_peak_bytes": {
+                                "format": "int64",
+                                "type": "integer"
+                              },
+                              "sampled_peak_bytes": {
+                                "format": "int64",
+                                "type": "integer"
+                              },
+                              "samples": {
+                                "format": "int64",
+                                "type": "integer"
+                              },
+                              "shared_memory_bytes": {
+                                "format": "int64",
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "samples",
+                              "duration_seconds",
+                              "sampled_peak_bytes",
+                              "lifetime_peak_bytes",
+                              "shared_memory_bytes",
+                              "host_available_min_bytes"
+                            ],
+                            "type": "object"
+                          },
+                          "steady": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "duration_seconds": {
+                                "type": "number"
+                              },
+                              "host_available_min_bytes": {
+                                "format": "int64",
+                                "type": "integer"
+                              },
+                              "lifetime_peak_bytes": {
+                                "format": "int64",
+                                "type": "integer"
+                              },
+                              "sampled_peak_bytes": {
+                                "format": "int64",
+                                "type": "integer"
+                              },
+                              "samples": {
+                                "format": "int64",
+                                "type": "integer"
+                              },
+                              "shared_memory_bytes": {
+                                "format": "int64",
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "samples",
+                              "duration_seconds",
+                              "sampled_peak_bytes",
+                              "lifetime_peak_bytes",
+                              "shared_memory_bytes",
+                              "host_available_min_bytes"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "phase",
+                          "pod_id",
+                          "startup",
+                          "steady"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "other_mib": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "preconditions": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    },
+                    "shared_memory_mib": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warm": {
+                      "format": "int64",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "evidence_id",
+                    "sha256",
+                    "status",
+                    "reason",
+                    "baseline_mib",
+                    "limited_mib",
+                    "candidate_mib",
+                    "minimum_candidate_mib",
+                    "shared_memory_mib",
+                    "other_mib",
+                    "allocatable_mib",
+                    "envelope_bytes",
+                    "headroom_bytes",
+                    "cold",
+                    "warm",
+                    "observations",
+                    "preconditions",
+                    "limitations",
+                    "artifacts"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful management response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
+          }
+        },
+        "summary": "Inspect named sealed memory evidence without applying a workload change",
+        "x-minimum-role": "owner"
+      }
+    },
     "/api/v1/models": {
       "get": {
         "responses": {
@@ -1696,6 +3778,34 @@
                                       "build_jobs",
                                       "build_memory_mib",
                                       "scratch_gib"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "memory": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "evidence_id": {
+                                        "type": "string"
+                                      },
+                                      "evidence_sha256": {
+                                        "type": "string"
+                                      },
+                                      "other_mib": {
+                                        "format": "int64",
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "evidence_id",
+                                      "evidence_sha256",
+                                      "other_mib"
                                     ],
                                     "type": "object"
                                   },
@@ -2309,6 +4419,34 @@
                                 }
                               ]
                             },
+                            "memory": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "evidence_id": {
+                                      "type": "string"
+                                    },
+                                    "evidence_sha256": {
+                                      "type": "string"
+                                    },
+                                    "other_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "evidence_id",
+                                    "evidence_sha256",
+                                    "other_mib"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "model": {
                               "type": "string"
                             },
@@ -2871,6 +5009,34 @@
                                     "build_jobs",
                                     "build_memory_mib",
                                     "scratch_gib"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "memory": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "evidence_id": {
+                                      "type": "string"
+                                    },
+                                    "evidence_sha256": {
+                                      "type": "string"
+                                    },
+                                    "other_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "evidence_id",
+                                    "evidence_sha256",
+                                    "other_mib"
                                   ],
                                   "type": "object"
                                 },
@@ -3479,6 +5645,34 @@
                                 }
                               ]
                             },
+                            "memory": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "evidence_id": {
+                                      "type": "string"
+                                    },
+                                    "evidence_sha256": {
+                                      "type": "string"
+                                    },
+                                    "other_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "evidence_id",
+                                    "evidence_sha256",
+                                    "other_mib"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "model": {
                               "type": "string"
                             },
@@ -3978,6 +6172,34 @@
                             }
                           ]
                         },
+                        "memory": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "evidence_sha256": {
+                                  "type": "string"
+                                },
+                                "other_mib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "evidence_id",
+                                "evidence_sha256",
+                                "other_mib"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "model": {
                           "type": "string"
                         },
@@ -4274,6 +6496,34 @@
                           "build_jobs",
                           "build_memory_mib",
                           "scratch_gib"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "memory": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "evidence_id": {
+                            "type": "string"
+                          },
+                          "evidence_sha256": {
+                            "type": "string"
+                          },
+                          "other_mib": {
+                            "format": "int64",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "evidence_id",
+                          "evidence_sha256",
+                          "other_mib"
                         ],
                         "type": "object"
                       },
@@ -4580,6 +6830,34 @@
                                 "build_jobs",
                                 "build_memory_mib",
                                 "scratch_gib"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "memory": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "evidence_sha256": {
+                                  "type": "string"
+                                },
+                                "other_mib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "evidence_id",
+                                "evidence_sha256",
+                                "other_mib"
                               ],
                               "type": "object"
                             },
@@ -5021,6 +7299,34 @@
                                 "build_jobs",
                                 "build_memory_mib",
                                 "scratch_gib"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "memory": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "evidence_sha256": {
+                                  "type": "string"
+                                },
+                                "other_mib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "evidence_id",
+                                "evidence_sha256",
+                                "other_mib"
                               ],
                               "type": "object"
                             },
@@ -5957,6 +8263,239 @@
         },
         "summary": "Observe explicit demo/live inventory and dependency availability",
         "x-minimum-role": "viewer"
+      }
+    },
+    "/api/v1/telemetry/summary": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "backend": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "observed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "observed_at",
+                        "reason"
+                      ],
+                      "type": "object"
+                    },
+                    "metrics_export": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "observed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "observed_at",
+                        "reason"
+                      ],
+                      "type": "object"
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "mutation_storage_available": {
+                      "type": "boolean"
+                    },
+                    "observed_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "operations": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "queued": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "recovery_required": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "running": {
+                          "format": "int64",
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "queued",
+                        "running",
+                        "recovery_required"
+                      ],
+                      "type": "object"
+                    },
+                    "traces_export": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "observed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "observed_at",
+                        "reason"
+                      ],
+                      "type": "object"
+                    },
+                    "values": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "observed_at": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "unit": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "unit",
+                          "state",
+                          "value",
+                          "observed_at",
+                          "reason"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "observed_at",
+                    "mode",
+                    "mutation_storage_available",
+                    "operations",
+                    "metrics_export",
+                    "traces_export",
+                    "backend",
+                    "values"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful management response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
+          }
+        },
+        "summary": "Read bounded telemetry freshness and fixed aggregate queries; no query parameters accepted",
+        "x-minimum-role": "owner"
       }
     },
     "/health/live": {
