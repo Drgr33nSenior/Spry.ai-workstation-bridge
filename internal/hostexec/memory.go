@@ -108,10 +108,30 @@ func (e *Executor) memoryPreview(ctx context.Context, d domain.Draft, c domain.C
 	if err != nil {
 		return s, err
 	}
+	telemetry, telemetryErr := mem.Telemetry(root, m)
+	telemetryReason := ""
+	if telemetryErr != nil {
+		telemetryReason = "invalid_telemetry_capacity_evidence"
+	} else if telemetry != nil {
+		s.TelemetryProfile = telemetry.Profile
+		s.TelemetryReserveMiB = telemetry.ReserveMiB
+		s.TelemetryComponentLimitsMiB = telemetry.ComponentLimitsMiB
+		s.TelemetryMarginMiB = telemetry.MarginMiB
+		s.TelemetryCalculatedAllowanceMiB = telemetry.CalculatedAllowanceMiB
+		if d.Memory.OtherMiB < telemetry.ReserveMiB {
+			telemetryReason = "other_workload_budget_below_telemetry_reserve"
+		}
+	}
+	if telemetryReason != "" && d.Action == "memory.plan.export" {
+		return s, errors.New("memory plan requires valid sealed telemetry evidence and an other-workload budget at least its reserve")
+	}
 	if d.Action == "memory.evidence.import" {
 		// Intake preserves stale/failed observations. Only candidate generation
 		// requires fresh hardware and matching source; nothing is relabelled.
 		s.Preconditions = map[string]string{"memory_manifest": digest, "memory_source": c.Revision, "memory_policy": policyRevision(e.policy)}
+		if telemetry != nil {
+			s.Preconditions["memory_telemetry_evidence"] = m.Files["telemetry/evidence.json"]
+		}
 		// These are retained deployment declarations, not observed consumption.
 		dep, readErr := mem.RawJSON(filepath.Join(root, "deployment.json"))
 		if readErr == nil {
@@ -148,6 +168,11 @@ func (e *Executor) memoryPreview(ctx context.Context, d domain.Draft, c domain.C
 			s.Status = "incomplete"
 			s.Reason = "source_revision_stale"
 		}
+		if telemetryReason != "" {
+			s.Status = "incomplete"
+			s.Reason = telemetryReason
+			s.Limitations = append(s.Limitations, "Telemetry capacity evidence is retained but cannot establish a plan until its schema and conservative reserve are valid.")
+		}
 		return s, nil
 	}
 	if m.SourceRevision != c.Revision {
@@ -170,6 +195,9 @@ func (e *Executor) memoryPreview(ctx context.Context, d domain.Draft, c domain.C
 	}
 	spec := mem.Nested(deployment, "spec", "template", "spec")
 	s.Preconditions = map[string]string{"memory_manifest": digest, "memory_hardware": hardware, "memory_boot": m.BootID, "memory_source": c.Revision, "memory_policy": policyRevision(e.policy), "memory_baseline_spec": mem.Identity(spec)}
+	if telemetry != nil {
+		s.Preconditions["memory_telemetry_evidence"] = m.Files["telemetry/evidence.json"]
+	}
 	s.BaselineMiB = c.Resources.MemoryMiB
 	s.LimitedMiB = c.Resources.MemoryMiB
 	s.SharedMemoryMiB = c.Resources.SharedMemoryMiB

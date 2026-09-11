@@ -195,6 +195,21 @@ func TestMemoryRealIntakeRetainsFailedEvidenceWithoutCluster(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err = os.Mkdir(filepath.Join(inbox, "telemetry"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = durableJSON(filepath.Join(inbox, "telemetry", "evidence.json"), map[string]any{
+		"schema": 2, "status": "generated-not-deployed", "hardware_qualification": "NOT RUN", "enabled": true,
+		"profile": "full", "gpu_exporter": false, "sglang_trace": false, "kubelet": false,
+		"node_name": "fixture", "api_address": "10.0.0.1", "workstation_address": "10.0.0.2",
+		"reserve_mib": 6144, "stack_limit_mib": 4736,
+		"component_limits_mib": map[string]int64{"cluster_stack_mib": 4736, "host_alloy_mib": 512, "hardware_sampler_mib": 128},
+		"margin_mib":           768, "calculated_allowance_mib": 6144, "planned_workloads": []string{"sglang"},
+		"workload_overlay": "apps/overlays/dual-gpu", "stack_images": []string{}, "workload_images": []string{},
+		"source_identity": map[string]any{}, "source_sha256": map[string]string{},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	digest, err := mem.Seal(context.Background(), inbox, c.Revision, strings.Repeat("a", 64), "00000000-0000-0000-0000-000000000001")
 	if err != nil {
 		t.Fatal(err)
@@ -213,6 +228,15 @@ func TestMemoryRealIntakeRetainsFailedEvidenceWithoutCluster(t *testing.T) {
 	var summary domain.MemorySummary
 	if err = json.Unmarshal(done.Data, &summary); err != nil || summary.Status != "incomplete" || strings.Contains(string(done.Data), "SYNTHETIC_PRIVATE_FAILURE") {
 		t.Fatal("failed input relabelled or private bytes exported", err)
+	}
+	if summary.TelemetryProfile != "full" || summary.TelemetryReserveMiB != 6144 || summary.TelemetryCalculatedAllowanceMiB != 6144 {
+		t.Fatalf("sealed telemetry allowance was not retained in the summary: %+v", summary)
+	}
+	tooLow := *r.Draft.Memory
+	tooLow.OtherMiB = 6143
+	preview, err := e.MemoryPreview(context.Background(), domain.Draft{Action: "memory.evidence.import", Target: e.policy.Target, SourceRevision: c.Revision, Memory: &tooLow}, c)
+	if err != nil || preview.Status != "incomplete" || preview.Reason != "other_workload_budget_below_telemetry_reserve" {
+		t.Fatalf("telemetry reserve did not remain a helper admission floor: %+v %v", preview, err)
 	}
 	retained := filepath.Join(root, "memory", r.ID, "inputs")
 	if _, err = mem.Verify(context.Background(), retained, digest); err != nil {

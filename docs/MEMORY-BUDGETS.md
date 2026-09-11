@@ -87,6 +87,7 @@ bundle/
   deployment.json          # exact baseline Deployment, not only resources
   workload.json            # same tokenizer-produced workload for every run
   resource-plan.json      # current installer plan from observed hardware
+  telemetry/evidence.json # optional nonsecret rendered-capacity evidence
   observations/
     cold-01/startup/{startup.json,memory.jsonl}
     cold-01/serving/{result.json,host-telemetry.jsonl}
@@ -99,6 +100,16 @@ bundle/
 Copy only those selected files; retain the full original collection separately.
 Missing observation files and failed records can be sealed/imported as incomplete
 evidence. They cannot justify a candidate. Do not synthesize success fields.
+
+When telemetry capacity is part of the reviewed workload budget, copy only the
+installer's nonsecret `evidence.json` as `telemetry/evidence.json`; do not copy
+rendered manifests, endpoint configuration, logs or exporter data into the
+memory bundle. Bridge hash-binds that optional file. Schema 1 is accepted only
+as legacy `full`-profile evidence. Schema 2 must contain the exact
+`cluster_stack_mib`, `host_alloy_mib` and `hardware_sampler_mib` components,
+its explicit margin and a reserve no smaller than their sum. Bridge displays
+the profile and values in MiB. A schema-1 calculated component allowance is
+unknown; its reserve remains conservative.
 
 Export the current Bridge configuration and obtain its `revision`. Hash the
 exact root-published hardware report used by the helper, and read its matching
@@ -138,6 +149,12 @@ Create an owner-private draft with the exact current target/revision:
 WebUI/RAG, VMs and builds without double-counting host reserves. Bridge refuses
 an other-workload allowance below its observed other-Pod requests. Missing
 topology, CPU policy, cluster accounting or changed hardware prevents export.
+If a sealed telemetry evidence file is present, `other_mib` must also be at
+least its `reserve_mib`. The telemetry reserve is a capacity floor, not measured
+RSS and does not replace other workload accounting. If telemetry evidence is
+omitted, Bridge retains the existing explicit owner responsibility to include
+the selected telemetry profile in `other_mib`; omission does not establish a
+memory saving or release capacity to the model.
 
 ```sh
 bridgectl --context PRIVATE_CONTEXT memory-preview --file import-draft.json

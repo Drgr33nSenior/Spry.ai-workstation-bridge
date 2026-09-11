@@ -151,6 +151,10 @@ func ValidateOutput(ctx context.Context, dir, input, runtime string, m Manifest,
 	if p.WorkloadHash != m.Files["workload.json"] || p.Budget.Other != other || other < 0 || p.Budget.Allocatable <= 0 || p.Candidate+other > p.Budget.Allocatable || p.Budget.SHM <= 0 || p.Budget.SHM >= p.Baseline {
 		return fail()
 	}
+	telemetry, e := Telemetry(input, m)
+	if e != nil || (telemetry != nil && other < telemetry.ReserveMiB) {
+		return fail()
+	}
 	expected := map[string]string{filepath.Join(runtime, "versions.lock"): ""}
 	lock, _, e := HashFile(ctx, filepath.Join(runtime, "versions.lock"))
 	if e != nil {
@@ -344,6 +348,13 @@ func ValidateOutput(ctx context.Context, dir, input, runtime string, m Manifest,
 	s.MinimumCandidateMiB = p.Minimum
 	s.SharedMemoryMiB = p.Budget.SHM
 	s.OtherMiB = other
+	if telemetry != nil {
+		s.TelemetryProfile = telemetry.Profile
+		s.TelemetryReserveMiB = telemetry.ReserveMiB
+		s.TelemetryComponentLimitsMiB = telemetry.ComponentLimitsMiB
+		s.TelemetryMarginMiB = telemetry.MarginMiB
+		s.TelemetryCalculatedAllowanceMiB = telemetry.CalculatedAllowanceMiB
+	}
 	s.AllocatableMiB = p.Budget.Allocatable
 	s.EnvelopeBytes = envelope
 	s.HeadroomBytes = headroom

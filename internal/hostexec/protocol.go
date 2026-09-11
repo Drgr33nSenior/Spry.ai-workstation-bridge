@@ -57,6 +57,25 @@ func ConfigurationHash(s *domain.Serving, r *domain.Resources) string {
 
 type Client struct{ Socket string }
 
+func (c Client) PerformancePreview(ctx context.Context, d domain.Draft, cfg domain.Configuration) (domain.PerformanceSummary, error) {
+	r, e := c.call(ctx, http.MethodPost, "/v1/performance/preview", Request{Draft: d, Desired: cfg})
+	if e != nil {
+		return domain.PerformanceSummary{}, e
+	}
+	var s domain.PerformanceSummary
+	e = strictDecode(bytes.NewReader(r.Data), &s)
+	return s, e
+}
+func (c Client) PerformanceArtifact(ctx context.Context, id, name string) (domain.Artifact, error) {
+	r, e := c.call(ctx, http.MethodPost, "/v1/performance/artifact", domain.MemoryArtifactRequest{OperationID: id, Name: name})
+	if e != nil {
+		return domain.Artifact{}, e
+	}
+	var a domain.Artifact
+	e = strictDecode(bytes.NewReader(r.Data), &a)
+	return a, e
+}
+
 func (c Client) MemoryPreview(ctx context.Context, d domain.Draft, cfg domain.Configuration) (domain.MemorySummary, error) {
 	r, e := c.call(ctx, http.MethodPost, "/v1/memory/preview", Request{Draft: d, Desired: cfg})
 	if e != nil {

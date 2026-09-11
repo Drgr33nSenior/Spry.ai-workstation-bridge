@@ -24,6 +24,7 @@
   "game_deployment_uid": "owner-recorded-gaming-deployment-uid",
   "timeout_seconds": 900,
   "qualified_configurations": {},
+  "performance_sources": {},
   "session_qualifications": {},
   "max_records": 4096
 }

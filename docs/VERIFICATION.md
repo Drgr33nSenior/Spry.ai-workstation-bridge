@@ -1,5 +1,124 @@
 # Verification record
 
+## Performance experiments and metrics profile — 2026-09-11
+
+Entry baselines were Bridge `e4c746f949518eec713a54116e51c683deec7b8a`
+and installer `40d2607e794b67220b1d8b139302e6e2baa869fe`. Both working
+trees were clean. Results below concern the subsequent uncommitted candidate,
+not a release or an installed runtime approval. No Git index/history, installed
+service, credential, owner policy, live workload or cache data was changed.
+
+The installer owns the new comparison/coding/runtime/cache algorithms. Bridge
+adds typed owner-only previews, plans, exports, inspection and UI through the
+existing helper and operation journal. Old clients/configuration remain valid;
+old helpers refuse unknown actions. There is no store migration, automatic
+configuration promotion, new arbitrary-code worker or prune executor. The
+known-good catalog fixture remains `67a5060`. Release assembly additionally
+requires the selected installer performance contract; an old Bridge source that
+lacks this test is refused, not silently accepted or repinned.
+
+### Observed checks
+
+Use exact Go 1.27.1. As in the historical section below, inherited `OTEL_*`
+variables were removed only from test children, without displaying values or
+changing service policy. Retained Bridge logs are under
+`test-results/performance-check.9jLNHc`; installer logs are under
+`test-results/performance-check.ZUl1ac`.
+
+| Check | Observed result and boundary |
+|---|---|
+| Focused domain, performance, API, CLI, helper, engine, memory and telemetry tests | PASS, including uncached/race runs; synthetic private evidence, credentials and executor effects |
+| `make check` | PASS: exact toolchain, formatting, vet, unit/integration/race tests, generated OpenAPI, tidy diff, manifest source checks, four builds, module verification and govulncheck; no vulnerabilities found |
+| `make browser` | PASS with Chrome 152.0.7977.83 / Node 26.8.1; owner-only analysis previews, incomplete/unqualified states, exact confirmation, existing authentication/expiry/CSRF, reconnect and recovery |
+| `make package`; archive checksum verification | PASS: Linux amd64 server/helper/worker/CLI and macOS arm64/amd64 CLI archives. Packaging is not installation or runtime validation |
+| Installer `make check` using the existing prepared Python environment | PASS with explicit exclusions below; 57 shell test files, Python fixtures, ShellCheck, YAML/Ansible syntax and local rendering |
+| Installer telemetry image validator, `desktop-linux` | PASS with cached pinned Linux ARM64 images: full/metrics cluster and host parser checks, Prometheus rules/unit fixtures and synthetic OTLP sanitization. Evidence: installer `test-results/telemetry-images.8Sw6cf`; no image pull or target deployment |
+| Known-good and current candidate catalog contract | PASS; `bash scripts/test-installer-contract.sh --candidate INSTALLER` |
+| Current memory and performance contracts against a fresh installer source export | PASS with `-race -count=1`; actual exported CLI, verified source closure, private tiny artifacts and negative corpus, not GPU execution |
+| Installer Bridge-build/bundle fixtures | PASS; selected-pair missing/failed-test and source/recipe identity refusals. Compiler/package/signing actions are synthetic |
+
+Repeat the fresh-export pair with a new output directory, extract the generated
+archive, and verify its `SOURCE-MANIFEST.sha256` before testing:
+
+```sh
+# In the installer checkout; NEW_EXPORT must not exist.
+bash infrastructure/packages/bootstrap/prepare-source.sh NEW_EXPORT
+# After extracting and verifying that archive, in the Bridge checkout:
+env GOTOOLCHAIN=local CGO_ENABLED=1 \
+  BRIDGE_INSTALLER_MEMORY_CANDIDATE=EXTRACTED_PROJECT \
+  BRIDGE_INSTALLER_PERFORMANCE_CANDIDATE=EXTRACTED_PROJECT \
+  go test -race ./internal/memory ./internal/performance \
+  -run '^TestCandidateInstaller(Memory|Performance)Contract$' -count=1 -v
+```
+
+`EXTRACTED_PROJECT` is the private, verified installer source directory, not an
+installed executable approval. Exact source/archive hashes and check outputs
+are retained alongside the export and recorded in the installer's
+`docs/validation/VALIDATION-PERFORMANCE-20260911.md`.
+
+The final exported installer archive SHA-256 is
+`98dc4b1b7e2d045d7b26c8c584a963c5f2d4cf273400f2f48f62fdf3493f2014`.
+Its race-enabled pair result is in `export-pair-final.log`; the known-good and
+exported candidate catalog checks also passed in `catalog-export-final.log`.
+This includes the final comparison regression gates and loading disk evidence.
+
+### Failures corrected during implementation
+
+The first actual pair exposed a test using flags for a positional seal command,
+and an export wrapper with a nounset option-index expression. Both were corrected
+against the actual CLI and permanently tested. New private-bundle fixtures
+needed explicit `0700` directories; a helper fixture also incorrectly placed a
+non-journal `source.json` in the journal root. These were fixture corrections,
+not relaxed production privacy/journal checks. An old configuration fixture
+needed the documented default cache reserve when the new key is absent.
+
+The first installer full check failed ShellCheck SC2030/SC2031 because the new
+warm probe reused `status` near an existing subshell trap. A dedicated local
+`warm_probe_status` fixed the conflict without suppression. The rerun passed.
+An initial Bridge log setup failed because `test-results` was absent; no source
+gate ran in that attempt. Creating the local evidence directory resolved it.
+One archive checksum command used the repository root instead of `dist` and
+failed to find `SHA256SUMS`; rerunning in `dist` verified all three archives.
+
+Final review added exact serving-case matching, recomputed profile selection,
+owner-only operation/report filtering, stale/non-Ready warm-status refusals,
+cache inode/ancestor bounds and shared-storage accounting. It also closed the
+loading disk-evidence gap and preserved canonical `unknown` status for sealed
+incomplete profile identity. Comparison recommendations now retain the baseline
+on insufficient/noisy samples or latency/startup regressions instead of choosing
+by throughput alone. These checks do not qualify live measurements.
+
+### Exclusions and owner qualification
+
+Installer check exclusions: shfmt and bats unavailable; real ccache/C-compiler
+repeat build and CMake/Ninja fixture prerequisites absent; no selected local
+GPU-operator chart, streaming image or Wayland runtime image. Real HIP IPC did
+not run. Ansible emitted expected empty-inventory/host-pattern warnings and
+contacted no hosts. `make check-strict` was NOT RUN because those prerequisites
+are absent. Workflow lint is not applicable; no workflow source changed.
+
+NOT RUN: native Linux systemd/peer/cgroup enforcement, installed reader-group
+permissions, selected SGLang image execution, K3s admission/RBAC/scrape paths,
+physical startup/memory/queue/gaming measurements, generated-code execution,
+paid APIs, package installation and ISO/UEFI boot. The local Docker parser and
+sanitization checks are not substitutes for these gates.
+The helper's matching-current-boot/missing-hardware regression branch also
+requires Linux `/proc` and was explicitly skipped on this Mac; malformed and
+mismatched/unavailable boot cases executed as portable tests.
+
+The ten-task evaluator explicitly reports code compilation/unit execution as
+unavailable with the existing named-build-only worker. Extra live warmup lacks
+a reviewed non-root/shared-lock execution protocol. Pre-sharded checkpoint
+creation and current-client interactive priority remain unsupported. Loader
+defaults/native controls require the exact selected image's own evidence;
+combined startup timing is not pure model-load time. Cache work is plan-only.
+Metrics allowances are component limits plus margin, not measured RSS or savings.
+
+Follow [PERFORMANCE.md](PERFORMANCE.md) for exact owner collection, sealed bundle,
+plan/export, inspection and target qualification commands. Retain the qualified
+baseline and independent recovery access. No speedup, safe RAM reduction,
+automatic promotion or live deployment readiness is established here.
+
 ## Telemetry and adviser remediation — 2026-09-11
 
 Both working trees were clean at entry: Bridge

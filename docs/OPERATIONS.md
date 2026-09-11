@@ -1,5 +1,10 @@
 # Installation, access and recovery
 
+See [PERFORMANCE.md](PERFORMANCE.md) for owner-only analysis/selection exports,
+retained failed reports and original-helper inspection after interruption.
+Historical warm reports do not establish current readiness. No new operation
+installs a candidate, deletes caches or bypasses qualification/recovery fences.
+
 These procedures are for an authorized owner on the non-production workstation.
 No installation, service change, cluster change, VPN/DNS setup or reboot was run
 during implementation. Review the target checklist before installing artifacts.

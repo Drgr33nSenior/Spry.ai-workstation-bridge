@@ -7,12 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/domain"
 )
 
 func (e *Executor) Snapshot(ctx context.Context) (domain.Inventory, error) {
 	inv := domain.Inventory{Mode: "live", Target: e.policy.Target, Environment: e.policy.Environment, Profile: "unknown", ClusterMessage: "Kubernetes evidence unavailable"}
+	inv.ServingStatus = domain.ServingStatus{State: "unknown", RepresentativeWarmup: "unknown", Reason: "Current scoped Pod/process evidence unavailable; retained reports are not current readiness.", ObservedAt: time.Now().UTC()}
 	if err := e.verify(); err != nil {
 		return inv, err
 	}
@@ -78,6 +80,7 @@ func (e *Executor) Snapshot(ctx context.Context) (domain.Inventory, error) {
 		return inv, nil
 	}
 	managed := map[string]bool{}
+	aiReplicas := map[string]bool{}
 	for _, entry := range list(rs["items"]) {
 		m := object(entry)
 		for _, o := range list(nested(m, "metadata", "ownerReferences")) {
@@ -85,8 +88,12 @@ func (e *Executor) Snapshot(ctx context.Context) (domain.Inventory, error) {
 			if uid == e.policy.AIDeploymentUID || uid == e.policy.GameDeploymentUID {
 				managed[str(nested(m, "metadata", "uid"))] = true
 			}
+			if uid == e.policy.AIDeploymentUID {
+				aiReplicas[str(nested(m, "metadata", "uid"))] = true
+			}
 		}
 	}
+	inv.ServingStatus = observedServingStatus(pods, aiReplicas, e.policy.Target, e.policy.Namespace, inv.Profile)
 	for _, entry := range list(pods["items"]) {
 		pod := object(entry)
 		phase := str(nested(pod, "status", "phase"))
@@ -133,6 +140,69 @@ func (e *Executor) Snapshot(ctx context.Context) (domain.Inventory, error) {
 	inv.ClusterAvailable = true
 	inv.ClusterMessage = "Explicit dedicated identity read current node, all Pods and managed ReplicaSet ownership; mutation RBAC remains checked on apply"
 	return inv, nil
+}
+
+// Readiness remains Kubernetes' observation. A successful HTTP health probe is
+// not proof of representative warmup, nor may a historical report prove that a
+// replacement process is warm. The non-root installer status command separately
+// validates fresh in-Pod model/runtime/device evidence for an explicit warmup.
+func observedServingStatus(pods map[string]any, aiReplicas map[string]bool, target, namespace, profile string) domain.ServingStatus {
+	s := domain.ServingStatus{State: "unknown", RepresentativeWarmup: "unknown", Reason: "No unique current AI Pod/process; inspect the explicit target and retry status, not prior inference/tool work.", ObservedAt: time.Now().UTC()}
+	if profile == "gaming" || profile == "maintenance" || profile == "recovery-required" {
+		s.State = "not-applicable"
+		s.RepresentativeWarmup = "not-applicable"
+		s.Reason = "AI is not in a settled AI profile. Complete the explicit transition/recovery before submitting new inference."
+		return s
+	}
+	var selected map[string]any
+	for _, entry := range list(pods["items"]) {
+		p := object(entry)
+		if str(nested(p, "metadata", "namespace")) != namespace || str(nested(p, "spec", "nodeName")) != target {
+			continue
+		}
+		owned := false
+		for _, o := range list(nested(p, "metadata", "ownerReferences")) {
+			if aiReplicas[str(object(o)["uid"])] {
+				owned = true
+			}
+		}
+		if !owned || nested(p, "metadata", "deletionTimestamp") != nil {
+			continue
+		}
+		phase := str(nested(p, "status", "phase"))
+		if phase == "Succeeded" || phase == "Failed" {
+			continue
+		}
+		if selected != nil {
+			s.Reason = "Multiple active AI Pods; rollout identity is not settled."
+			return s
+		}
+		selected = p
+	}
+	if selected == nil {
+		return s
+	}
+	for _, entry := range list(nested(selected, "status", "containerStatuses")) {
+		c := object(entry)
+		if str(c["name"]) != "sglang" {
+			continue
+		}
+		ready, ok := c["ready"].(bool)
+		if !ok || str(c["containerID"]) == "" || str(c["imageID"]) == "" || str(nested(selected, "metadata", "uid")) == "" {
+			return s
+		}
+		s.KubernetesReady = &ready
+		s.Identity = domain.Hash(map[string]any{"pod": nested(selected, "metadata", "uid"), "container": c["containerID"], "image": c["imageID"], "restart": c["restartCount"], "started": nested(c, "state", "running", "startedAt")})
+		if !ready {
+			s.State = "model-loading"
+			s.Reason = "Kubernetes readiness is false. Loading/compilation/warmup phases are not independently observed by this probe."
+		} else {
+			s.State = "healthy"
+			s.Reason = "Kubernetes Ready; representative warmth is unknown. Run the explicit non-root serving-warm-status command with fresh evidence; Bridge cannot launch that harness through its root helper."
+		}
+		return s
+	}
+	return s
 }
 func podBudget(p map[string]any) (int64, int64, int64, error) {
 	if nested(p, "spec", "resources") != nil {

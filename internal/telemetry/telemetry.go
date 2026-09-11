@@ -138,7 +138,7 @@ func (r *Recorder) Operation(ctx context.Context, action string) (context.Contex
 		return ctx, func(string) {}
 	}
 	switch action {
-	case "serving.configure", "resources.configure", "caches.configure", "serving.start", "serving.stop", "serving.restart", "model.stage", "model.verify", "profile.switch", "profile.restore", "hardware.refresh", "build.start", "cpu-policy.export", "operation.reconcile", "memory.evidence.import", "memory.plan.export":
+	case "serving.configure", "resources.configure", "caches.configure", "serving.start", "serving.stop", "serving.restart", "model.stage", "model.verify", "profile.switch", "profile.restore", "hardware.refresh", "build.start", "cpu-policy.export", "operation.reconcile", "memory.evidence.import", "memory.plan.export", "performance.export", "performance.profile.select":
 	default:
 		action = "other"
 	}

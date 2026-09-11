@@ -196,6 +196,17 @@ func (d *Demo) Validate(ctx context.Context, draft domain.Draft, c domain.Config
 		return domain.Preview{}, e
 	}
 	p := preview(draft, c, inv.SourceRevision)
+	if domain.PerformanceAction(draft.Action) {
+		s, err := d.PerformancePreview(ctx, draft, c)
+		if err != nil {
+			return p, err
+		}
+		for k, v := range s.Preconditions {
+			p.Preconditions[k] = v
+		}
+		p.Consequences = append(p.Consequences, "Analysis/selection export only. No deployment, source defaults, cache deletion or code execution.")
+		p.Warnings = append(p.Warnings, s.Limitations...)
+	}
 	if domain.MemoryAction(draft.Action) {
 		s, err := d.MemoryPreview(ctx, draft, c)
 		if err != nil {
@@ -210,6 +221,9 @@ func (d *Demo) Validate(ctx context.Context, draft domain.Draft, c domain.Config
 	return p, nil
 }
 func (d *Demo) Execute(ctx context.Context, x domain.Execution, progress func(domain.Progress) error) (domain.Result, error) {
+	if domain.PerformanceAction(x.Plan.Draft.Action) {
+		return d.executePerformance(ctx, x)
+	}
 	if domain.MemoryAction(x.Plan.Draft.Action) {
 		return d.executeMemory(ctx, x)
 	}
@@ -364,7 +378,7 @@ func (l *Live) Snapshot(ctx context.Context) (domain.Inventory, error) {
 		return domain.Inventory{}, e
 	}
 	h := domain.Hardware{Status: "unknown", TrainedSpeed: "unknown", Channels: "unknown"}
-	inv := domain.Inventory{Mode: "live", Target: l.opts.Target, Environment: l.opts.Environment, SourceRevision: ref.SourceRevision, Profile: "unknown", Hardware: h, Models: models(l.stager), Recipes: worker.Recipes(l.opts.WorkerSocket != ""), Harnesses: harnesses(), ClusterMessage: "host executor inventory probe required"}
+	inv := domain.Inventory{Mode: "live", Target: l.opts.Target, Environment: l.opts.Environment, SourceRevision: ref.SourceRevision, Profile: "unknown", Hardware: h, Models: models(l.stager), Recipes: worker.Recipes(l.opts.WorkerSocket != ""), Harnesses: harnesses(), ClusterMessage: "host executor inventory probe required", ServingStatus: domain.ServingStatus{State: "unknown", RepresentativeWarmup: "unknown", Reason: "Host executor unavailable; no fixture fallback."}}
 	if l.stager == nil {
 		for i := range inv.Models {
 			inv.Models[i].Status = "unavailable — managed model storage requires owner setup"
@@ -383,6 +397,7 @@ func (l *Live) Snapshot(ctx context.Context) (domain.Inventory, error) {
 			inv.ClusterMessage = hostInv.ClusterMessage
 			inv.Profile = hostInv.Profile
 			inv.Hardware = hostInv.Hardware
+			inv.ServingStatus = hostInv.ServingStatus
 		} else {
 			inv.ClusterMessage = "host executor or scoped cluster inventory unavailable"
 		}
@@ -394,6 +409,22 @@ func (l *Live) Snapshot(ctx context.Context) (domain.Inventory, error) {
 	return inv, nil
 }
 func (l *Live) Validate(ctx context.Context, d domain.Draft, c domain.Configuration) (domain.Preview, error) {
+	if domain.PerformanceAction(d.Action) {
+		if err := domain.ValidateDraft(d, c, domain.Inventory{Target: l.opts.Target}); err != nil {
+			return domain.Preview{}, err
+		}
+		s, err := l.PerformancePreview(ctx, d, c)
+		if err != nil {
+			return domain.Preview{}, err
+		}
+		p := preview(d, c, c.Revision)
+		for k, v := range s.Preconditions {
+			p.Preconditions[k] = v
+		}
+		p.Consequences = append(p.Consequences, "Generate owner-private analysis/selection artifacts only. No source update, rollout, warmup, code execution, cache deletion or qualification.")
+		p.Warnings = append(p.Warnings, s.Limitations...)
+		return p, nil
+	}
 	if domain.MemoryAction(d.Action) {
 		// Intake must remain usable during a cluster outage. Export independently
 		// checks live capacity in the helper; generic inventory would probe twice.
@@ -528,6 +559,9 @@ func (l *Live) Execute(ctx context.Context, x domain.Execution, progress func(do
 			if domain.MemoryAction(x.Plan.Draft.Action) && hr.State == "succeeded" {
 				result.Artifacts, e = memoryArtifacts(hr.Data, x.Plan.Desired.Revision)
 			}
+			if domain.PerformanceAction(x.Plan.Draft.Action) && hr.State == "succeeded" {
+				result.Artifacts, e = performanceArtifacts(hr.Data, x.Plan.Desired.Revision)
+			}
 		}
 	default:
 		switch x.Plan.Draft.Action {
@@ -651,6 +685,9 @@ func (l *Live) Inspect(ctx context.Context, id string) (domain.Result, error) {
 		if e == nil && domain.MemoryAction(r.Action) && h.State == "succeeded" {
 			result.Artifacts, e = memoryArtifacts(h.Data, r.SourceRevision)
 		}
+		if e == nil && domain.PerformanceAction(r.Action) && h.State == "succeeded" {
+			result.Artifacts, e = performanceArtifacts(h.Data, r.SourceRevision)
+		}
 		return result, e
 	}
 	if r.Kind == "worker" {
@@ -718,6 +755,9 @@ func (l *Live) InspectExecution(ctx context.Context, x domain.Execution) (domain
 		}
 		if statusErr == nil && domain.MemoryAction(x.Plan.Draft.Action) && h.State == "succeeded" {
 			result.Artifacts, statusErr = memoryArtifacts(h.Data, x.Plan.Desired.Revision)
+		}
+		if statusErr == nil && domain.PerformanceAction(x.Plan.Draft.Action) && h.State == "succeeded" {
+			result.Artifacts, statusErr = performanceArtifacts(h.Data, x.Plan.Desired.Revision)
 		}
 		return result, statusErr
 	}

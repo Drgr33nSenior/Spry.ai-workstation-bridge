@@ -132,7 +132,7 @@ func (e *Engine) CreatePlan(ctx context.Context, a auth.Actor, d domain.Draft) (
 	return p, err
 }
 func (e *Engine) preflight(ctx context.Context, d domain.Draft, c domain.Configuration) (domain.Inventory, domain.Preview, error) {
-	if domain.MemoryAction(d.Action) {
+	if domain.EvidenceAction(d.Action) {
 		pv, err := e.Adapter.Validate(ctx, d, c)
 		return domain.Inventory{Target: e.Target}, pv, err
 	}
@@ -533,8 +533,8 @@ func (e *Engine) finish(id string, r domain.Result) error {
 		if !ok {
 			return fmt.Errorf("operation missing")
 		}
-		if domain.MemoryAction(o.Plan.Draft.Action) && (r.RecoveryRequired || r.State == "recovery-required" || r.State == "running" || r.State == "queued") {
-			r = domain.Result{State: "failed", Phase: "read-only-interrupted", Message: "Memory evidence/export outcome unavailable. Inspect the independent helper operation; retained evidence is not validated and no GPU recovery or workload mutation was authorized."}
+		if domain.EvidenceAction(o.Plan.Draft.Action) && (r.RecoveryRequired || r.State == "recovery-required" || r.State == "running" || r.State == "queued") {
+			r = domain.Result{State: "failed", Phase: "read-only-interrupted", Message: "Evidence/export outcome unavailable. Inspect the independent helper operation; retained evidence is not validated and no GPU recovery or workload mutation was authorized."}
 		}
 		o.State = r.State
 		o.Phase = r.Phase

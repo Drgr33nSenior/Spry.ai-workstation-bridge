@@ -52,7 +52,7 @@ try{
   let browserStep='';
   const evaluate=async (expression,description='')=>{const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true,userGesture:true});if(r.exceptionDetails)throw new Error('Browser script evaluation failed'+(description||browserStep?': '+(description||browserStep):''));return r.result.value;};
   async function waitFor(expression,description,timeout=10000){const until=Date.now()+timeout;while(Date.now()<until){if(await evaluate(expression,description))return;await delay(30);}throw new Error('Browser timeout: '+description);}
-  async function navigate(page){await evaluate(`location.hash=${JSON.stringify(page)}`);await waitFor(`document.getElementById('page-title').textContent===${JSON.stringify({serving:'Models & serving',resources:'Resource budgets',profiles:'Operating profiles',builds:'Build jobs',caches:'Persistent assets',harnesses:'Developer clients',operations:'Operations & recovery'}[page])}`,'page '+page);}
+  async function navigate(page){await evaluate(`location.hash=${JSON.stringify(page)}`);await waitFor(`document.getElementById('page-title').textContent===${JSON.stringify({serving:'Models & serving',resources:'Resource budgets',performance:'Performance evidence',profiles:'Operating profiles',builds:'Build jobs',caches:'Persistent assets',harnesses:'Developer clients',operations:'Operations & recovery'}[page])}`,'page '+page);}
   await call('Page.enable',{});await call('Runtime.enable',{});await call('Page.navigate',{url:origin});
   await waitFor(`document.getElementById('login') && !document.getElementById('login').hidden`,'sign-in form');
   await evaluate(`document.getElementById('credential').value=${JSON.stringify(secret)};document.getElementById('login-form').requestSubmit();`);
@@ -118,6 +118,8 @@ try{
   assert.equal(await evaluate(`state.config.revision`),memoryRevision,'memory preview changed managed source');
   const observationMarkup=await evaluate(`memorySummary({...state.memoryPreview,observations:[{phase:'cold',pod_id:'synthetic-window',startup:{samples:3,duration_seconds:2,sampled_peak_bytes:1073741824,lifetime_peak_bytes:2147483648,shared_memory_bytes:0,host_available_min_bytes:4294967296},steady:{samples:0,duration_seconds:0,sampled_peak_bytes:0,lifetime_peak_bytes:0}}]})`,'memory window rendering');
   assert.ok(observationMarkup.includes('cold / startup')&&observationMarkup.includes('cold / steady')&&observationMarkup.includes('Sampled peak')&&observationMarkup.includes('Cgroup lifetime peak')&&observationMarkup.includes('unknown'),'window/peak distinctions or missing-data state absent');
+  const telemetryMarkup=await evaluate(`memorySummary({...state.memoryPreview,telemetry_profile:'metrics-focused',telemetry_calculated_allowance_mib:1024,telemetry_reserve_mib:1536,telemetry_margin_mib:128,telemetry_component_limits_mib:{collector:512}})`,'telemetry allowance rendering');
+  assert.ok(telemetryMarkup.includes('Telemetry planning allowance')&&telemetryMarkup.includes('configured planning allowance, not measured telemetry RSS'),'telemetry allowance was presented as measured memory');
 
   // Live preflight has not generated a candidate. Mock only that response; plan
   // creation still uses the isolated Demo owner API and must not apply anything.
@@ -163,6 +165,34 @@ try{
   await evaluate(`window.fetch=window.memoryOriginalFetch;delete window.memoryOriginalFetch;delete window.memoryAdvisoryPlan;document.querySelector('#plan-dialog .dialog-header button').click();`);
   console.log('PASS browser: memory unknown/incomplete/refused/candidate states, explicit export review, retained unqualified summary and advisory text without approval');
   browserStep='';
+
+  // Performance evidence uses the same owner-bound plan lifecycle, but an
+  // inspection is read-only and a profile selection remains unqualified.
+  await navigate('performance');
+  await waitFor(`!!document.getElementById('performance-form')`,'owner performance form');
+  const performanceRevision=await evaluate(`state.config.revision`),performanceOperations=await evaluate(`state.operations.length`);
+  await evaluate(`document.getElementById('performance-evidence-id').value='demo-incomplete';document.getElementById('performance-evidence-sha256').value='a'.repeat(64);document.getElementById('performance-evidence-id').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('[data-performance-task=preview]').click();`);
+  await waitFor(`document.getElementById('performance-preview').textContent.includes('incomplete')`,'incomplete performance evidence');
+  assert.equal(await evaluate(`state.operations.length`),performanceOperations,'performance preview dispatched an operation');
+  assert.equal(await evaluate(`state.config.revision`),performanceRevision,'performance preview changed managed source');
+  await evaluate(`document.getElementById('performance-evidence-id').value='demo-complete';document.getElementById('performance-evidence-id').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('[data-performance-task=plan]').click();`);
+  await waitFor(`document.getElementById('plan-dialog').open`,'performance export review');
+  assert.ok(await evaluate(`document.getElementById('plan-summary').textContent.includes('performance.export')`));
+  assert.ok(await evaluate(`document.getElementById('plan-summary').textContent.includes('No configuration or workload state changes')&&!document.getElementById('plan-summary').textContent.includes('can disrupt workloads')&&document.getElementById('apply-button').textContent==='Confirm analysis export'`),'performance export review implied a disruptive workload apply');
+  assert.equal(await evaluate(`state.operations.length`),performanceOperations,'performance review applied an operation');
+  await evaluate(`document.querySelector('#plan-dialog .dialog-header button').click();document.getElementById('performance-kind').value='profile-selection';document.getElementById('performance-kind').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('[data-performance-task=select]').click();`);
+  await waitFor(`document.getElementById('plan-dialog').open`,'unqualified profile selection review');
+  assert.ok(await evaluate(`document.getElementById('plan-summary').textContent.includes('performance.profile.select')`));
+  assert.equal(await evaluate(`state.operations.length`),performanceOperations,'profile selection review applied an operation');
+  await evaluate(`document.querySelector('#plan-dialog .dialog-header button').click();document.getElementById('performance-kind').value='profile-status';document.getElementById('performance-kind').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('[data-performance-task=preview]').click();`);
+  await waitFor(`document.getElementById('performance-preview').textContent.includes('historical profile report')`,'historical selected-profile status');
+  assert.ok(await evaluate(`document.getElementById('performance-preview').textContent.includes('not current workload qualification')`),'profile status claimed current qualification');
+  await evaluate(`document.querySelector('[data-performance-task=plan]').click();`);
+  await waitFor(`document.getElementById('plan-dialog').open`,'profile status export review');
+  assert.ok(await evaluate(`document.getElementById('plan-summary').textContent.includes('performance.export')`));
+  assert.ok(await evaluate(`document.getElementById('apply-consequence').textContent.includes('does not apply a workload change')`),'profile status export implied workload application');
+  await evaluate(`document.querySelector('#plan-dialog .dialog-header button').click();`);
+  console.log('PASS browser: performance incomplete state, read-only preview, explicit analysis export and unqualified profile-selection review');
 
   for(const page of ['resources','builds','caches','harnesses'])await navigate(page);
   await navigate('profiles');

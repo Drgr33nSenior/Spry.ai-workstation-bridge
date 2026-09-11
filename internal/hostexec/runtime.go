@@ -188,6 +188,9 @@ func (e *Executor) execute(ctx context.Context, r Request, lock *os.File) (data 
 	if domain.MemoryAction(r.Draft.Action) {
 		return e.executeMemory(ctx, r, lock)
 	}
+	if domain.PerformanceAction(r.Draft.Action) {
+		return e.executePerformance(ctx, r, lock)
+	}
 	if err := e.checkHardware(); err != nil {
 		return nil, err
 	}

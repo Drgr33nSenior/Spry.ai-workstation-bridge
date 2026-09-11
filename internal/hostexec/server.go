@@ -77,6 +77,38 @@ func Serve(ctx context.Context, l net.Listener, e *Executor) error {
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+			if r.Method == http.MethodPost && r.URL.Path == "/v1/performance/preview" {
+				var request Request
+				if strictDecode(r.Body, &request) != nil {
+					fail(400, "invalid performance request")
+					return
+				}
+				ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+				defer cancel()
+				summary, err := e.PerformancePreview(ctx, request.Draft, request.Desired)
+				if err != nil {
+					fail(409, err.Error())
+					return
+				}
+				data, _ := json.Marshal(summary)
+				_ = json.NewEncoder(w).Encode(Result{State: "succeeded", Data: data})
+				return
+			}
+			if r.Method == http.MethodPost && r.URL.Path == "/v1/performance/artifact" {
+				var request domain.MemoryArtifactRequest
+				if strictDecode(r.Body, &request) != nil {
+					fail(400, "invalid performance artifact request")
+					return
+				}
+				a, err := e.PerformanceArtifact(r.Context(), request.OperationID, request.Name)
+				if err != nil {
+					fail(409, err.Error())
+					return
+				}
+				data, _ := json.Marshal(a)
+				_ = json.NewEncoder(w).Encode(Result{State: "succeeded", Data: data})
+				return
+			}
 			if r.Method == http.MethodPost && r.URL.Path == "/v1/memory/preview" {
 				var request Request
 				if strictDecode(r.Body, &request) != nil {

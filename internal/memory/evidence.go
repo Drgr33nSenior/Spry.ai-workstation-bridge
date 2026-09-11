@@ -25,7 +25,7 @@ const MaxBundle = 1 << 30
 var Digest = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var ID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]{7,79}$`)
 var ObservationID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]{0,39}$`)
-var Tools = []string{"serving_memory.py", "measurement.py", "performance.sh", "serving.py", "model_kernels.py"}
+var Tools = []string{"serving_memory.py", "measurement.py", "performance.sh", "serving.py", "model_kernels.py", "telemetry.py"}
 var ObservationFiles = []string{"startup/startup.json", "startup/memory.jsonl", "serving/result.json", "serving/host-telemetry.jsonl", "serving/after/runtime.json", "serving/after/pod.json"}
 
 type Manifest struct {
@@ -113,7 +113,7 @@ func Verify(ctx context.Context, root, want string) (Manifest, error) {
 	if m.Schema != 1 || m.Kind != "sglang-memory-evidence" || !Digest.MatchString(m.SourceRevision) || !Digest.MatchString(m.HardwareSHA256) || !regexp.MustCompile(`^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$`).MatchString(m.BootID) || len(m.Observations) > 20 {
 		return m, errors.New("invalid memory evidence manifest")
 	}
-	allowed := map[string]bool{"deployment.json": true, "workload.json": true, "resource-plan.json": true}
+	allowed := map[string]bool{"deployment.json": true, "workload.json": true, "resource-plan.json": true, "telemetry/evidence.json": true}
 	seen := map[string]bool{}
 	for _, id := range m.Observations {
 		if !ObservationID.MatchString(id) || seen[id] {

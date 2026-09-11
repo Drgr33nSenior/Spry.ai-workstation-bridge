@@ -230,7 +230,7 @@ func (e *Executor) Submit(peer uint32, req Request) (Result, error) {
 }
 
 func readOnlyAction(action string) bool {
-	return action == "hardware.refresh" || action == "cpu-policy.export" || domain.MemoryAction(action)
+	return action == "hardware.refresh" || action == "cpu-policy.export" || domain.EvidenceAction(action)
 }
 
 func (e *Executor) visibleResult(r record) Result {
@@ -249,6 +249,12 @@ func (e *Executor) validate(r Request) error {
 	}
 	if err := domain.ValidateMemoryRequest(r.Draft); err != nil {
 		return err
+	}
+	if err := domain.ValidatePerformanceRequest(r.Draft); err != nil {
+		return err
+	}
+	if domain.PerformanceAction(r.Draft.Action) {
+		return e.validatePerformanceRequest(r)
 	}
 	if domain.MemoryAction(r.Draft.Action) {
 		return e.validateMemoryRequest(r)
@@ -335,6 +341,10 @@ func (e *Executor) finish(r record, lock *os.File) {
 		r.Result.State = "succeeded"
 		r.Result.Phase = "effects-complete"
 		r.Result.Message = "Validated operation completed; physical GPU release is a point-in-time observation."
+		if domain.EvidenceAction(r.Request.Draft.Action) {
+			r.Result.Phase = "analysis-complete"
+			r.Result.Message = "Read-only analysis/report completed; inspect its status for refusals or incomplete evidence. No source, workload, cache or qualification was changed."
+		}
 	}
 	if r.Result.State == "succeeded" && !readOnlyAction(r.Request.Draft.Action) {
 		pending := r

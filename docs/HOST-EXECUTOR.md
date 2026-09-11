@@ -1,5 +1,11 @@
 # Host executor contract v1
 
+The additive owner-only `performance.export` and `performance.profile.select`
+actions are described in [PERFORMANCE.md](PERFORMANCE.md). They use the existing
+root journal and canonical lock for analysis/selection exports, never model-code
+execution, cache deletion or live application. Root policy owns the allowed
+bundle IDs, paths and hashes; installed tool approvals remain independent.
+
 `internal/hostexec` is the only Bridge adapter that changes GPU workloads. The
 API uses an authenticated Unix connection as the configured `bridge` UID. The
 helper accepts fixed typed requests, hashes the operation ID, actor, draft and

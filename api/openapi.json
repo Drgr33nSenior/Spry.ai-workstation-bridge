@@ -1502,6 +1502,31 @@
                       "status": {
                         "type": "string"
                       },
+                      "telemetry_calculated_allowance_mib": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "telemetry_component_limits_mib": {
+                        "additionalProperties": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      },
+                      "telemetry_margin_mib": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "telemetry_profile": {
+                        "type": "string"
+                      },
+                      "telemetry_reserve_mib": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
                       "warm": {
                         "format": "int64",
                         "type": "integer"
@@ -1918,6 +1943,33 @@
                                 },
                                 "model": {
                                   "type": "string"
+                                },
+                                "performance": {
+                                  "anyOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "evidence_id": {
+                                          "type": "string"
+                                        },
+                                        "evidence_sha256": {
+                                          "type": "string"
+                                        },
+                                        "kind": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "evidence_id",
+                                        "evidence_sha256",
+                                        "kind"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 },
                                 "profile": {
                                   "type": "string"
@@ -2640,6 +2692,33 @@
                             "model": {
                               "type": "string"
                             },
+                            "performance": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "evidence_id": {
+                                      "type": "string"
+                                    },
+                                    "evidence_sha256": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "evidence_id",
+                                    "evidence_sha256",
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "profile": {
                               "type": "string"
                             },
@@ -3009,6 +3088,33 @@
                   "model": {
                     "type": "string"
                   },
+                  "performance": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "evidence_id": {
+                            "type": "string"
+                          },
+                          "evidence_sha256": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "evidence_id",
+                          "evidence_sha256",
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "profile": {
                     "type": "string"
                   },
@@ -3334,6 +3440,31 @@
                     },
                     "status": {
                       "type": "string"
+                    },
+                    "telemetry_calculated_allowance_mib": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "telemetry_component_limits_mib": {
+                      "additionalProperties": {
+                        "format": "int64",
+                        "type": "integer"
+                      },
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "telemetry_margin_mib": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "telemetry_profile": {
+                      "type": "string"
+                    },
+                    "telemetry_reserve_mib": {
+                      "format": "int64",
+                      "type": "integer"
                     },
                     "warm": {
                       "format": "int64",
@@ -3852,6 +3983,33 @@
                               },
                               "model": {
                                 "type": "string"
+                              },
+                              "performance": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "evidence_id": {
+                                        "type": "string"
+                                      },
+                                      "evidence_sha256": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "evidence_id",
+                                      "evidence_sha256",
+                                      "kind"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               },
                               "profile": {
                                 "type": "string"
@@ -4486,6 +4644,33 @@
                             "model": {
                               "type": "string"
                             },
+                            "performance": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "evidence_id": {
+                                      "type": "string"
+                                    },
+                                    "evidence_sha256": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "evidence_id",
+                                    "evidence_sha256",
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "profile": {
                               "type": "string"
                             },
@@ -5083,6 +5268,33 @@
                             },
                             "model": {
                               "type": "string"
+                            },
+                            "performance": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "evidence_id": {
+                                      "type": "string"
+                                    },
+                                    "evidence_sha256": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "evidence_id",
+                                    "evidence_sha256",
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "profile": {
                               "type": "string"
@@ -5712,6 +5924,33 @@
                             "model": {
                               "type": "string"
                             },
+                            "performance": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "evidence_id": {
+                                      "type": "string"
+                                    },
+                                    "evidence_sha256": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "evidence_id",
+                                    "evidence_sha256",
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "profile": {
                               "type": "string"
                             },
@@ -6239,6 +6478,33 @@
                         "model": {
                           "type": "string"
                         },
+                        "performance": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "evidence_sha256": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "evidence_id",
+                                "evidence_sha256",
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "profile": {
                           "type": "string"
                         },
@@ -6473,6 +6739,1173 @@
         "x-minimum-role": "owner"
       }
     },
+    "/api/v1/performance/artifact": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Required with browser session cookies; Origin must match configured management origin. Bearer requests do not require browser headers.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operation_id",
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "qualification": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "source_revision": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "sha256",
+                    "size",
+                    "source_revision",
+                    "qualification"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful management response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
+          }
+        },
+        "summary": "Download one owner-private verified performance report artifact",
+        "x-minimum-role": "owner"
+      }
+    },
+    "/api/v1/performance/inspect": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Required with browser session cookies; Origin must match configured management origin. Bearer requests do not require browser headers.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "operation_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operation_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actor": {
+                      "type": "string"
+                    },
+                    "artifacts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "content": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "qualification": {
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "source_revision": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "sha256",
+                          "size",
+                          "source_revision",
+                          "qualification"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "cancel_requested": {
+                      "type": "boolean"
+                    },
+                    "created_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "dispatched": {
+                      "type": "boolean"
+                    },
+                    "events": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bytes": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "phase": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "phase",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live_applied": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "plan": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "actor": {
+                          "type": "string"
+                        },
+                        "created_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "desired": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "caches": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "build_jobs": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "build_memory_mib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "compiler_gib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "models_gib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "scratch_gib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "shader_gib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "models_gib",
+                                "compiler_gib",
+                                "shader_gib",
+                                "build_jobs",
+                                "build_memory_mib",
+                                "scratch_gib"
+                              ],
+                              "type": "object"
+                            },
+                            "resources": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "cpu": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "gpu_count": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "memory_mib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "physical_gpu": {
+                                  "type": "string"
+                                },
+                                "shared_memory_mib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "cpu",
+                                "memory_mib",
+                                "shared_memory_mib",
+                                "gpu_count"
+                              ],
+                              "type": "object"
+                            },
+                            "revision": {
+                              "type": "string"
+                            },
+                            "serving": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "concurrency": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "context": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "cpu_offload_gib": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "max_output_tokens": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "max_request_tokens": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "memory_fraction": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "model",
+                                "context",
+                                "concurrency",
+                                "memory_fraction",
+                                "cpu_offload_gib",
+                                "max_request_tokens",
+                                "max_output_tokens"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "revision",
+                            "serving",
+                            "resources",
+                            "caches"
+                          ],
+                          "type": "object"
+                        },
+                        "draft": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "action": {
+                              "type": "string"
+                            },
+                            "caches": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "build_jobs": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "build_memory_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "compiler_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "models_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "scratch_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "shader_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "models_gib",
+                                    "compiler_gib",
+                                    "shader_gib",
+                                    "build_jobs",
+                                    "build_memory_mib",
+                                    "scratch_gib"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "memory": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "evidence_id": {
+                                      "type": "string"
+                                    },
+                                    "evidence_sha256": {
+                                      "type": "string"
+                                    },
+                                    "other_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "evidence_id",
+                                    "evidence_sha256",
+                                    "other_mib"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "model": {
+                              "type": "string"
+                            },
+                            "performance": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "evidence_id": {
+                                      "type": "string"
+                                    },
+                                    "evidence_sha256": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "evidence_id",
+                                    "evidence_sha256",
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "profile": {
+                              "type": "string"
+                            },
+                            "recipe": {
+                              "type": "string"
+                            },
+                            "recovery_id": {
+                              "type": "string"
+                            },
+                            "resources": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "cpu": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "gpu_count": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "memory_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "physical_gpu": {
+                                      "type": "string"
+                                    },
+                                    "shared_memory_mib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "cpu",
+                                    "memory_mib",
+                                    "shared_memory_mib",
+                                    "gpu_count"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "serving": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "concurrency": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "context": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "cpu_offload_gib": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "max_output_tokens": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "max_request_tokens": {
+                                      "format": "int64",
+                                      "type": "integer"
+                                    },
+                                    "memory_fraction": {
+                                      "type": "number"
+                                    },
+                                    "model": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "model",
+                                    "context",
+                                    "concurrency",
+                                    "memory_fraction",
+                                    "cpu_offload_gib",
+                                    "max_request_tokens",
+                                    "max_output_tokens"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "source_revision": {
+                              "type": "string"
+                            },
+                            "target": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "action",
+                            "target",
+                            "source_revision"
+                          ],
+                          "type": "object"
+                        },
+                        "expires_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "hash": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "preview": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "changes": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "after": {},
+                                  "before": {},
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "before",
+                                  "after"
+                                ],
+                                "type": "object"
+                              },
+                              "type": [
+                                "array",
+                                "null"
+                              ]
+                            },
+                            "consequences": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": [
+                                "array",
+                                "null"
+                              ]
+                            },
+                            "preconditions": {
+                              "additionalProperties": {
+                                "type": "string"
+                              },
+                              "type": [
+                                "object",
+                                "null"
+                              ]
+                            },
+                            "warnings": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": [
+                                "array",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "changes",
+                            "consequences",
+                            "warnings",
+                            "preconditions"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "actor",
+                        "draft",
+                        "desired",
+                        "preview",
+                        "created_at",
+                        "expires_at",
+                        "hash"
+                      ],
+                      "type": "object"
+                    },
+                    "recovery_required": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "source_updated": {
+                      "type": "boolean"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "updated_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "actor",
+                    "plan",
+                    "state",
+                    "phase",
+                    "message",
+                    "revision",
+                    "created_at",
+                    "updated_at",
+                    "source_updated",
+                    "dispatched",
+                    "live_applied",
+                    "recovery_required",
+                    "cancel_requested",
+                    "events"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful management response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
+          }
+        },
+        "summary": "Reconcile only the original read-only performance analysis executor; never redispatch",
+        "x-minimum-role": "owner"
+      }
+    },
+    "/api/v1/performance/preview": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Required with browser session cookies; Origin must match configured management origin. Bearer requests do not require browser headers.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "caches": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "build_jobs": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "build_memory_mib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "compiler_gib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "models_gib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "scratch_gib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "shader_gib": {
+                            "format": "int64",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "models_gib",
+                          "compiler_gib",
+                          "shader_gib",
+                          "build_jobs",
+                          "build_memory_mib",
+                          "scratch_gib"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "memory": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "evidence_id": {
+                            "type": "string"
+                          },
+                          "evidence_sha256": {
+                            "type": "string"
+                          },
+                          "other_mib": {
+                            "format": "int64",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "evidence_id",
+                          "evidence_sha256",
+                          "other_mib"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "performance": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "evidence_id": {
+                            "type": "string"
+                          },
+                          "evidence_sha256": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "evidence_id",
+                          "evidence_sha256",
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "recipe": {
+                    "type": "string"
+                  },
+                  "recovery_id": {
+                    "type": "string"
+                  },
+                  "resources": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "cpu": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "gpu_count": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "memory_mib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "physical_gpu": {
+                            "type": "string"
+                          },
+                          "shared_memory_mib": {
+                            "format": "int64",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "cpu",
+                          "memory_mib",
+                          "shared_memory_mib",
+                          "gpu_count"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "serving": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "concurrency": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "context": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "cpu_offload_gib": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "max_output_tokens": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "max_request_tokens": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "memory_fraction": {
+                            "type": "number"
+                          },
+                          "model": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "model",
+                          "context",
+                          "concurrency",
+                          "memory_fraction",
+                          "cpu_offload_gib",
+                          "max_request_tokens",
+                          "max_output_tokens"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source_revision": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action",
+                  "target",
+                  "source_revision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "artifacts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "content": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "qualification": {
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "source_revision": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "sha256",
+                          "size",
+                          "source_revision",
+                          "qualification"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "evidence_id": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "unit": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "value",
+                          "unit",
+                          "state"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "limitations": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "observed_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "preconditions": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "schema": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schema",
+                    "evidence_id",
+                    "sha256",
+                    "kind",
+                    "status",
+                    "reason",
+                    "observed_at",
+                    "fields",
+                    "limitations",
+                    "preconditions",
+                    "artifacts"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful management response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
+          }
+        },
+        "summary": "Inspect one owner-approved sealed performance bundle without running an experiment or applying source",
+        "x-minimum-role": "owner"
+      }
+    },
     "/api/v1/plans": {
       "post": {
         "parameters": [
@@ -6570,6 +8003,33 @@
                   },
                   "model": {
                     "type": "string"
+                  },
+                  "performance": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "evidence_id": {
+                            "type": "string"
+                          },
+                          "evidence_sha256": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "evidence_id",
+                          "evidence_sha256",
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "profile": {
                     "type": "string"
@@ -6904,6 +8364,33 @@
                         },
                         "model": {
                           "type": "string"
+                        },
+                        "performance": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "evidence_sha256": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "evidence_id",
+                                "evidence_sha256",
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "profile": {
                           "type": "string"
@@ -7373,6 +8860,33 @@
                         },
                         "model": {
                           "type": "string"
+                        },
+                        "performance": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "evidence_sha256": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "evidence_id",
+                                "evidence_sha256",
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "profile": {
                           "type": "string"
@@ -8237,6 +9751,46 @@
                         "null"
                       ]
                     },
+                    "serving_status": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "identity": {
+                          "type": "string"
+                        },
+                        "kubernetes_ready": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "observed_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "representative_warmup": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "kubernetes_ready",
+                        "representative_warmup",
+                        "reason",
+                        "observed_at",
+                        "identity"
+                      ],
+                      "type": "object"
+                    },
                     "source_revision": {
                       "type": "string"
                     },
@@ -8252,6 +9806,7 @@
                     "cluster_available",
                     "cluster_message",
                     "profile",
+                    "serving_status",
                     "hardware",
                     "models",
                     "recipes",

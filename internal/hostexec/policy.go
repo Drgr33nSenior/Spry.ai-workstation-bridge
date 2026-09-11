@@ -31,6 +31,7 @@ type SessionQualification struct {
 	ConfigMaps   map[string]string `json:"config_maps"`
 }
 type Policy struct {
+	PerformanceSources      map[string]MemorySource         `json:"performance_sources,omitempty"`
 	MemorySources           map[string]MemorySource         `json:"memory_sources,omitempty"`
 	Version                 int                             `json:"version"`
 	AllowedUID              uint32                          `json:"allowed_uid"`
@@ -83,6 +84,9 @@ func LoadPolicy(path string) (Policy, error) {
 	return p, p.verifyRuntime()
 }
 func (p Policy) validate() error {
+	if err := p.validatePerformancePolicy(); err != nil {
+		return err
+	}
 	if err := p.validateMemoryPolicy(); err != nil {
 		return err
 	}

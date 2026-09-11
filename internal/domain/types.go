@@ -59,17 +59,18 @@ type Configuration struct {
 func (c Configuration) ContentRevision() string { c.Revision = ""; return Hash(c) }
 
 type Draft struct {
-	Action         string         `json:"action"`
-	Target         string         `json:"target"`
-	SourceRevision string         `json:"source_revision"`
-	Model          string         `json:"model,omitempty"`
-	Profile        string         `json:"profile,omitempty"`
-	Recipe         string         `json:"recipe,omitempty"`
-	RecoveryID     string         `json:"recovery_id,omitempty"`
-	Serving        *Serving       `json:"serving,omitempty"`
-	Resources      *Resources     `json:"resources,omitempty"`
-	Caches         *CacheBudgets  `json:"caches,omitempty"`
-	Memory         *MemoryRequest `json:"memory,omitempty"`
+	Action         string              `json:"action"`
+	Target         string              `json:"target"`
+	SourceRevision string              `json:"source_revision"`
+	Model          string              `json:"model,omitempty"`
+	Profile        string              `json:"profile,omitempty"`
+	Recipe         string              `json:"recipe,omitempty"`
+	RecoveryID     string              `json:"recovery_id,omitempty"`
+	Serving        *Serving            `json:"serving,omitempty"`
+	Resources      *Resources          `json:"resources,omitempty"`
+	Caches         *CacheBudgets       `json:"caches,omitempty"`
+	Memory         *MemoryRequest      `json:"memory,omitempty"`
+	Performance    *PerformanceRequest `json:"performance,omitempty"`
 }
 type Change struct {
 	Field  string `json:"field"`
@@ -210,18 +211,19 @@ type Harness struct {
 	Limitations []string `json:"limitations"`
 }
 type Inventory struct {
-	Mode             string    `json:"mode"`
-	Target           string    `json:"target"`
-	Environment      string    `json:"environment"`
-	SourceRevision   string    `json:"source_revision"`
-	ClusterAvailable bool      `json:"cluster_available"`
-	ClusterMessage   string    `json:"cluster_message"`
-	Profile          string    `json:"profile"`
-	Hardware         Hardware  `json:"hardware"`
-	Models           []Model   `json:"models"`
-	Recipes          []Recipe  `json:"recipes"`
-	Caches           []Cache   `json:"caches"`
-	Harnesses        []Harness `json:"harnesses"`
+	Mode             string        `json:"mode"`
+	Target           string        `json:"target"`
+	Environment      string        `json:"environment"`
+	SourceRevision   string        `json:"source_revision"`
+	ClusterAvailable bool          `json:"cluster_available"`
+	ClusterMessage   string        `json:"cluster_message"`
+	Profile          string        `json:"profile"`
+	ServingStatus    ServingStatus `json:"serving_status"`
+	Hardware         Hardware      `json:"hardware"`
+	Models           []Model       `json:"models"`
+	Recipes          []Recipe      `json:"recipes"`
+	Caches           []Cache       `json:"caches"`
+	Harnesses        []Harness     `json:"harnesses"`
 }
 type BundleFile struct {
 	Path    string `json:"path"`
@@ -273,11 +275,14 @@ func ValidateDraft(d Draft, c Configuration, inv Inventory) error {
 		return Fail("source_drift", "source changed; refresh configuration and create a new plan")
 	}
 	switch d.Action {
-	case "serving.configure", "resources.configure", "caches.configure", "serving.start", "serving.stop", "serving.restart", "model.stage", "model.verify", "profile.switch", "profile.restore", "hardware.refresh", "build.start", "cpu-policy.export", "operation.reconcile", "memory.evidence.import", "memory.plan.export":
+	case "serving.configure", "resources.configure", "caches.configure", "serving.start", "serving.stop", "serving.restart", "model.stage", "model.verify", "profile.switch", "profile.restore", "hardware.refresh", "build.start", "cpu-policy.export", "operation.reconcile", "memory.evidence.import", "memory.plan.export", "performance.export", "performance.profile.select":
 	default:
 		return Fail("unsupported", "unsupported operation")
 	}
 	if err := ValidateMemoryRequest(d); err != nil {
+		return err
+	}
+	if err := ValidatePerformanceRequest(d); err != nil {
 		return err
 	}
 	if d.Serving != nil && d.Action != "serving.configure" {

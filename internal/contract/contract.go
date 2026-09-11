@@ -51,6 +51,13 @@ type Health struct {
 type Error struct {
 	Error domain.Failure `json:"error"`
 }
+type PerformanceArtifactRequest struct {
+	OperationID string `json:"operation_id"`
+	Name        string `json:"name"`
+}
+type PerformanceOperationRequest struct {
+	OperationID string `json:"operation_id"`
+}
 
 var Endpoints = []Endpoint{
 	{"POST", "/api/v1/memory/inspect", "Reconcile only the original read-only helper outcome; never redispatch", "owner", domain.MemoryOperationRequest{}, domain.Operation{}, "200", false},
@@ -58,6 +65,9 @@ var Endpoints = []Endpoint{
 	{"POST", "/api/v1/memory/preview", "Inspect named sealed memory evidence without applying a workload change", "owner", domain.Draft{}, domain.MemorySummary{}, "200", false},
 	{"POST", "/api/v1/memory/artifact", "Export owner-private preconditioned candidate or rollback; recheck identities", "owner", domain.MemoryArtifactRequest{}, domain.Artifact{}, "200", false},
 	{"POST", "/api/v1/memory/advice", "Optional bounded Agents API advisory; no approval or application authority", "owner", domain.MemoryRequest{}, MemoryAdvice{}, "200", false},
+	{"POST", "/api/v1/performance/preview", "Inspect one owner-approved sealed performance bundle without running an experiment or applying source", "owner", domain.Draft{}, domain.PerformanceSummary{}, "200", false},
+	{"POST", "/api/v1/performance/artifact", "Download one owner-private verified performance report artifact", "owner", PerformanceArtifactRequest{}, domain.Artifact{}, "200", false},
+	{"POST", "/api/v1/performance/inspect", "Reconcile only the original read-only performance analysis executor; never redispatch", "owner", PerformanceOperationRequest{}, domain.Operation{}, "200", false},
 	{"GET", "/health/live", "Controller liveness independent of K3s", "public", nil, Health{}, "200", true},
 	{"POST", "/api/v1/auth/login", "Exchange a local scoped credential for a browser session", "credential", Login{}, Session{}, "200", true},
 	{"GET", "/api/v1/auth/session", "Inspect authenticated browser identity", "viewer", nil, Session{}, "200", false},

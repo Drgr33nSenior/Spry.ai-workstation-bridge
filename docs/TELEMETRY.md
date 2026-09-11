@@ -1,5 +1,20 @@
 # Private telemetry
 
+## Optional metrics-only composition
+
+The installer supports `TELEMETRY_PROFILE=metrics`; `full` stays default. Select
+the matching reviewed host Alloy configuration from its runbook. Bridge service
+policy remains separate: for metrics-only operation, retain the private metrics
+endpoint and set existing `telemetry.trace_sample_ratio` to `0`. Trace exports
+are disabled and their state is `not_configured`, not an exporter failure.
+Selecting a source render does not update installed Bridge policy.
+
+The installer calculates component limits plus explicit margin. Bridge memory
+planning can bind sealed telemetry evidence and enforce its reserve inside
+`other_mib`. Allowance is not measured RSS or permission to allocate apparent
+savings to inference. See [PERFORMANCE.md](PERFORMANCE.md) and
+[MEMORY-BUDGETS.md](MEMORY-BUDGETS.md).
+
 Bridge can send management metrics and sampled traces to a private OpenTelemetry
 Protocol (OTLP) collector, such as Grafana Alloy. Export is disabled by default.
 The API does not add a metrics listener or public ingress. Telemetry is lossy

@@ -65,6 +65,9 @@ func New(c config.Config, e *engine.Engine, logger *slog.Logger) *Server {
 	secure("POST /api/v1/memory/artifact", s.memoryArtifact)
 	secure("POST /api/v1/memory/advice", s.memoryAdvice)
 	secure("POST /api/v1/memory/inspect", s.memoryInspect)
+	secure("POST /api/v1/performance/preview", s.performancePreview)
+	secure("POST /api/v1/performance/artifact", s.performanceArtifact)
+	secure("POST /api/v1/performance/inspect", s.performanceInspect)
 	secure("GET /api/v1/models", s.inventory)
 	secure("GET /api/v1/resources", s.inventory)
 	secure("GET /api/v1/builds", s.inventory)
@@ -361,7 +364,7 @@ func (s *Server) getPlan(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, domain.Fail("not_found", "plan not found"))
 		return
 	}
-	if domain.MemoryAction(p.Draft.Action) && !s.owner(w, r) {
+	if domain.EvidenceAction(p.Draft.Action) && !s.owner(w, r) {
 		return
 	}
 	s.json(w, 200, p)
@@ -390,7 +393,7 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", `"`+strconv.FormatUint(o.Revision, 10)+`"`)
-		if domain.MemoryAction(o.Plan.Draft.Action) && !s.owner(w, r) {
+		if domain.EvidenceAction(o.Plan.Draft.Action) && !s.owner(w, r) {
 			return
 		}
 		s.json(w, 200, o)
@@ -400,7 +403,7 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 	if actor(r).Role != "owner" {
 		filtered := []domain.Operation{}
 		for _, o := range operations {
-			if !domain.MemoryAction(o.Plan.Draft.Action) {
+			if !domain.EvidenceAction(o.Plan.Draft.Action) {
 				filtered = append(filtered, o)
 			}
 		}

@@ -1,5 +1,18 @@
 # Implementation matrix
 
+The 2026-09-11 performance additions extend existing evidence/runtime commands;
+see [PERFORMANCE.md](PERFORMANCE.md) for commands and explicit limits.
+
+| Requirement | Existing contract | Added implementation | Source regression / target boundary |
+|---|---|---|---|
+| Compare/select | Serving sweep, startup, memory and numerical evidence | Installer versioned comparison/profile artifacts; Bridge owner plans and private exports | Identity/case/quality/gain/refusal tests; no measured speedup |
+| Coding/tool quality | Existing language tools; worker accepts fixed build recipes | Ten deterministic tasks with hashes/accounting | No network or generated-code shell; live code execution unavailable without an approved evaluator |
+| Loading/queue | Pinned SGLang image and explicit evidence | Exact-image-gated bounded candidates; defaults unchanged | Unknown capabilities refused; native overload/cancellation/priority qualification remains target-only |
+| Warm status | Readiness plus explicit non-root warmup | Fresh identity comparison; current Bridge health separate from historical reports | Stale/restart/failure tests; root helper cannot launch the non-root harness |
+| Inference cache | Managed Triton/Inductor namespaces | Inventory/prune plans and protected namespace references | Path/ownership/symlink/active/reserve tests; no deletion or quota claim |
+| Metrics telemetry | Full profile and collector-health monitoring | Optional metrics composition, component+margin accounting, sealed memory evidence | Both profiles/image parsers; no measured RAM saving or automatic budget transfer |
+
+
 The initial 2026-09-08 inspection had no installer HEAD; its untracked source and
 staged IDE metadata were preserved. The 2026-09-11 memory integration inspected
 Bridge `90312ed3c81a6dae5f6b84a072d67f670ac970c8` and installer

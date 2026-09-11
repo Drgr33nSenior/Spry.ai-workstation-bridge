@@ -24,6 +24,9 @@ const usage = `Usage: bridgectl [--context FILE] [--endpoint ORIGIN] [--credenti
 Read: status | models | config | resources | profiles | builds | caches | harnesses | operations [ID] | memory | audit (owner)
 Memory: memory-preview --file DRAFT.json | memory-advice --file REQUEST.json
         memory-inspect OPERATION_ID
+Performance: performance-preview --file DRAFT.json
+             performance-select --file DRAFT.json (creates an un-applied selection plan)
+             performance-inspect OPERATION_ID
 Local evidence: memory-seal --directory ABSOLUTE_DIRECTORY --source-revision SHA256 --hardware-sha256 SHA256 --boot-id UUID
 Source: export-source --output NEW_FILE
 Artifact: artifact OPERATION_ID --name ARTIFACT_NAME --output NEW_FILE
@@ -41,7 +44,8 @@ Local administration (service stopped):
 
 Global flags precede the command. Credentials are read from owner-only files, never command arguments.
 Plans use the same typed JSON contract and server validation as the web UI. Apply requires the exact target.
-Memory previews and advice do not apply plans. Memory exports remain unqualified; sealing creates a new local manifest.
+Memory and performance previews do not apply plans. Performance selection records an owner-reviewed configuration only after explicit plan/apply.
+Memory exports remain unqualified; sealing creates a new local manifest.
 Exit codes: 0 success; 2 usage/validation; 3 authentication/authorization; 4 conflict; 5 unavailable/transport;
             6 failed/cancelled operation; 7 recovery required; 8 deadline exceeded.
 `
@@ -133,6 +137,11 @@ func Run(args []string, out, errout io.Writer) int {
 					if err != nil {
 						return report(out, err)
 					}
+				} else if domain.PerformanceAction(operation.Plan.Draft.Action) {
+					artifact, err = fetchPerformanceArtifact(ctx, c, operationID, artifact)
+					if err != nil {
+						return report(out, err)
+					}
 				}
 				if err := client.WriteArtifact(artifact, *path); err != nil {
 					return report(out, err)
@@ -179,6 +188,8 @@ func Run(args []string, out, errout io.Writer) int {
 		return output(out, result)
 	case "memory-preview", "memory-advice", "memory-inspect":
 		return runMemory(ctx, c, command, rest, out)
+	case "performance-preview", "performance-select", "performance-inspect":
+		return runPerformance(ctx, c, command, rest, out)
 	case "plan":
 		flags := flags("plan")
 		file := flags.String("file", "", "typed draft JSON")

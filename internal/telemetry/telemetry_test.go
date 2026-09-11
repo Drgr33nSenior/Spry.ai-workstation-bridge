@@ -44,6 +44,44 @@ func TestDisabledIgnoresTelemetryEnvironment(t *testing.T) {
 	}
 }
 
+func TestMetricsOnlyProfileKeepsMetricsWithoutTraceRequests(t *testing.T) {
+	var metrics, traces atomic.Int32
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/metrics":
+			metrics.Add(1)
+		case "/v1/traces":
+			traces.Add(1)
+		default:
+			t.Error("unexpected signal path")
+		}
+		w.Header().Set("Content-Type", "application/x-protobuf")
+	}))
+	defer s.Close()
+	r, err := New(context.Background(), config.Telemetry{Enabled: true, OTLPEndpoint: s.URL, TraceSampleRatio: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, finish := r.Operation(context.Background(), "performance.export")
+	finish("succeeded")
+	if err = r.mp.ForceFlush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.tp.ForceFlush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	_, state := r.Status()
+	if state.State != "not_configured" || state.Reason != "sampling_disabled" || metrics.Load() == 0 || traces.Load() != 0 {
+		t.Fatalf("wrong optional signal status %+v metrics=%d traces=%d", state, metrics.Load(), traces.Load())
+	}
+	if err = r.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if traces.Load() != 0 {
+		t.Fatal("shutdown exported disabled traces")
+	}
+}
+
 func TestOTLPExportsOnlyAllowedAttributesAndBoundedCardinality(t *testing.T) {
 	const secret = "SECRET_SENTINEL"
 	var mu sync.Mutex
@@ -82,6 +120,10 @@ func TestOTLPExportsOnlyAllowedAttributesAndBoundedCardinality(t *testing.T) {
 	finish(400)
 	_, op := r.Operation(context.Background(), secret)
 	op(secret)
+	for _, action := range []string{"performance.export", "performance.profile.select"} {
+		_, finish := r.Operation(context.Background(), action)
+		finish("succeeded")
+	}
 	if err = r.tp.ForceFlush(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +138,11 @@ func TestOTLPExportsOnlyAllowedAttributesAndBoundedCardinality(t *testing.T) {
 		}
 		if strings.Contains(string(b), secret) || !strings.Contains(string(b), ServiceName) {
 			t.Errorf("unexpected exported resource/attributes: %s", b)
+		}
+		for _, action := range []string{"performance.export", "performance.profile.select"} {
+			if !strings.Contains(string(b), action) {
+				t.Errorf("missing fixed performance action %s", action)
+			}
 		}
 	}
 	points := 0

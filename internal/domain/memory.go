@@ -28,25 +28,30 @@ type MemoryObservation struct {
 
 // No raw Pod spec, environment, traces, prompts or provider text belongs here.
 type MemorySummary struct {
-	EvidenceID          string              `json:"evidence_id"`
-	SHA256              string              `json:"sha256"`
-	Status              string              `json:"status"`
-	Reason              string              `json:"reason"`
-	BaselineMiB         int64               `json:"baseline_mib"`
-	LimitedMiB          int64               `json:"limited_mib"`
-	CandidateMiB        int64               `json:"candidate_mib"`
-	MinimumCandidateMiB int64               `json:"minimum_candidate_mib"`
-	SharedMemoryMiB     int64               `json:"shared_memory_mib"`
-	OtherMiB            int64               `json:"other_mib"`
-	AllocatableMiB      int64               `json:"allocatable_mib"`
-	EnvelopeBytes       int64               `json:"envelope_bytes"`
-	HeadroomBytes       int64               `json:"headroom_bytes"`
-	Cold                int                 `json:"cold"`
-	Warm                int                 `json:"warm"`
-	Observations        []MemoryObservation `json:"observations"`
-	Preconditions       map[string]string   `json:"preconditions"`
-	Limitations         []string            `json:"limitations"`
-	Artifacts           []Artifact          `json:"artifacts"`
+	EvidenceID                      string              `json:"evidence_id"`
+	SHA256                          string              `json:"sha256"`
+	Status                          string              `json:"status"`
+	Reason                          string              `json:"reason"`
+	BaselineMiB                     int64               `json:"baseline_mib"`
+	LimitedMiB                      int64               `json:"limited_mib"`
+	CandidateMiB                    int64               `json:"candidate_mib"`
+	MinimumCandidateMiB             int64               `json:"minimum_candidate_mib"`
+	SharedMemoryMiB                 int64               `json:"shared_memory_mib"`
+	OtherMiB                        int64               `json:"other_mib"`
+	TelemetryProfile                string              `json:"telemetry_profile,omitempty"`
+	TelemetryReserveMiB             int64               `json:"telemetry_reserve_mib,omitempty"`
+	TelemetryComponentLimitsMiB     map[string]int64    `json:"telemetry_component_limits_mib,omitempty"`
+	TelemetryMarginMiB              int64               `json:"telemetry_margin_mib,omitempty"`
+	TelemetryCalculatedAllowanceMiB int64               `json:"telemetry_calculated_allowance_mib,omitempty"`
+	AllocatableMiB                  int64               `json:"allocatable_mib"`
+	EnvelopeBytes                   int64               `json:"envelope_bytes"`
+	HeadroomBytes                   int64               `json:"headroom_bytes"`
+	Cold                            int                 `json:"cold"`
+	Warm                            int                 `json:"warm"`
+	Observations                    []MemoryObservation `json:"observations"`
+	Preconditions                   map[string]string   `json:"preconditions"`
+	Limitations                     []string            `json:"limitations"`
+	Artifacts                       []Artifact          `json:"artifacts"`
 }
 type MemoryArtifactRequest struct {
 	OperationID string `json:"operation_id"`

@@ -61,6 +61,9 @@ case=tm.MemoryTests('runTest'); case.setUp()
 try:
  out.mkdir(mode=0o700)
  for old,new in [('deployment.json','deployment.json'),('workload.json','workload.json'),('resource.json','resource-plan.json')]: shutil.copyfile(case.root/old,out/new)
+ (out/'telemetry').mkdir(mode=0o700)
+ telemetry={'schema':2,'status':'generated-not-deployed','hardware_qualification':'NOT RUN','enabled':True,'profile':'full','gpu_exporter':False,'sglang_trace':False,'kubelet':False,'node_name':'fixture','api_address':'10.0.0.1','workstation_address':'10.0.0.2','reserve_mib':6144,'stack_limit_mib':4736,'component_limits_mib':{'cluster_stack_mib':4736,'host_alloy_mib':512,'hardware_sampler_mib':128},'margin_mib':768,'calculated_allowance_mib':6144,'planned_workloads':['sglang'],'workload_overlay':'apps/overlays/dual-gpu','stack_images':[],'workload_images':[],'source_identity':{},'source_sha256':{}}
+ (out/'telemetry'/'evidence.json').write_text(json.dumps(telemetry)+'\n')
  ids=[]
  for i,(start,serving) in enumerate(case.observations,1):
   ident=f'obs-{i:02d}'; ids.append(ident)
@@ -91,6 +94,7 @@ finally: case.doCleanups()
 	}
 	output := filepath.Join(temp, "plan")
 	args := []string{filepath.Join(root, "bin/workstationctl"), "rocm", "serving-memory-plan", filepath.Join(input, "deployment.json"), filepath.Join(input, "workload.json"), filepath.Join(input, "resource-plan.json"), output, "--other-mib", "8192"}
+	args = append(args, "--telemetry-evidence", filepath.Join(input, "telemetry", "evidence.json"))
 	for _, id := range m.Observations {
 		args = append(args, "--observation", filepath.Join(input, "observations", id, "startup"), filepath.Join(input, "observations", id, "serving"))
 	}

@@ -30,6 +30,13 @@ An optional OpenAI Agents API adviser is disabled by default; it can explain
 selected evidence and request a plan, but cannot approve or apply one. Neither
 workflow automatically changes running memory limits or grants qualification.
 
+The [performance workflow](docs/PERFORMANCE.md) adds owner-reviewed comparison,
+selection, loading/queue and cache-plan exports through the CLI and Performance
+page. Reports preserve unknown/incomplete evidence and remain unqualified.
+Metrics-only telemetry is optional; full telemetry remains the installer default.
+Generated-code execution, automatic warmup and interactive queue priority remain
+explicitly unavailable through the current execution/client boundaries.
+
 ## Run the demo
 
 Use Go **1.27.1**, as recorded in `.go-version`. No production Node.js runtime,
