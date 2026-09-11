@@ -122,20 +122,27 @@ observed identity. Missing/old observations yield unknown; model, runtime,
 software, tokenizer, workload, launch or hardware changes yield stale. Status
 is as of the observation, never an automatic qualification or background probe.
 Selections also bind the retained model-file, settings, resource and runtime
-source hashes. A fresh status observation must include these `producer_conditions`
-alongside the seven identity fields. Legacy selections or observations without
-them report unknown unless existing identity fields already prove drift. Retain
+source hashes. The schema-2 `producer_conditions` include the observed process
+argument hash separately from the Pod launch-spec hash. A fresh status observation
+must include these conditions alongside the seven identity fields. Legacy
+selections or observations with older or missing conditions report unknown unless
+existing identity fields already prove drift. Retain
 those records and collect a new complete observation; never copy current hashes
 into an old selection to make it appear current.
 Every outcome includes a bounded reason. An identified crash loop or current
-container termination is unavailable, not model loading. Historical failures do
+container termination is unavailable, not model loading. A scoped Pod that cannot
+pull its image reports unavailable even before a process exists; its process
+identity and warmth remain unknown. Historical failures do
 not make a recovered Ready container unhealthy; representative warmth remains
 separate and must be re-established for the current process.
 
 Comparison inputs must retain the finalized serving result, its original
 runtime JSON and matching startup evidence. Manifest declarations cannot replace
-producer identity. Numerical-quality summaries must reference the actual two
-checked kernel runs. Intermediate provenance states are refused; partial or
+producer identity. Each profile's checked run must match its observed runtime,
+including process arguments and dtype. Numerical equivalence requires the
+canonical comparison of the actual baseline and candidate checked runs; two
+independent passing self-comparisons do not establish equivalence. Intermediate
+provenance states are refused; partial or
 aborted repetitions remain inconclusive. For older bundles with missing bindings,
 retain the original and create a new private bundle from the original producer
 artifacts. Recollect missing observations; do not edit a result into success.

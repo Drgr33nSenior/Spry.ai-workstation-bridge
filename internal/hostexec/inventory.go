@@ -188,7 +188,18 @@ func observedServingStatus(pods map[string]any, aiReplicas map[string]bool, targ
 			continue
 		}
 		ready, ok := c["ready"].(bool)
-		if !ok || str(c["containerID"]) == "" || str(c["imageID"]) == "" || str(nested(selected, "metadata", "uid")) == "" {
+		if !ok || str(nested(selected, "metadata", "uid")) == "" {
+			return s
+		}
+		if str(c["containerID"]) == "" || str(c["imageID"]) == "" {
+			// Image pulls can fail before a process or resolved image exists. The
+			// unique scoped Pod supports that diagnostic, but not process identity,
+			// loading progress or representative warmth.
+			waiting := str(nested(c, "state", "waiting", "reason"))
+			if !ready && len(object(c["state"])) == 1 && (waiting == "ImagePullBackOff" || waiting == "ErrImagePull") {
+				s.KubernetesReady = &ready
+				s.State, s.Reason = servingNotReadyState(c)
+			}
 			return s
 		}
 		s.KubernetesReady = &ready
@@ -205,9 +216,9 @@ func observedServingStatus(pods map[string]any, aiReplicas map[string]bool, targ
 }
 
 // servingNotReadyState maps only current, documented container-state reasons to
-// fixed operator guidance. Kubernetes messages and historical lastState values
-// are deliberately excluded: they can contain unbounded or sensitive details and
-// do not describe the current serving process.
+// fixed operator guidance. Kubernetes messages are never returned. A previous
+// OOM reason explains a current crash loop, but cannot mark a recovered Ready
+// process unhealthy.
 func servingNotReadyState(container map[string]any) (string, string) {
 	state := object(container["state"])
 	waitingState, waitingOK := state["waiting"]

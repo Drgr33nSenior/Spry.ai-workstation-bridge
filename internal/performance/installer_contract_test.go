@@ -2,6 +2,7 @@ package performance
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,13 +66,27 @@ func TestCandidateInstallerPerformanceContract(t *testing.T) {
 		{"coding-eval", "refused", "failed"},
 		{"comparison", "normal", "comparison-not-qualified"},
 		{"comparison", "incomplete", "comparison-not-qualified"},
+		{"comparison", "declared-launch", "comparison-not-qualified"},
+		{"comparison", "cross-quality-mismatch", "comparison-not-qualified"},
+		{"comparison", "cross-logprob-mismatch", "comparison-not-qualified"},
+		{"comparison", "unrelated-quality", "comparison-not-qualified"},
+		{"comparison", "missing-cross-evidence", "comparison-not-qualified"},
+		{"comparison", "checked-launch-mismatch", "failed"},
 		{"comparison", "refused", "failed"},
 		{"profile-selection", "normal", "selected-unqualified"},
+		{"profile-selection", "declared-launch", "selected-unqualified"},
+		{"profile-selection", "cross-quality-mismatch", "failed"},
+		{"profile-selection", "cross-logprob-mismatch", "failed"},
+		{"profile-selection", "unrelated-quality", "failed"},
+		{"profile-selection", "missing-cross-evidence", "failed"},
 		{"profile-selection", "refused", "failed"},
 		{"profile-status", "normal", "current-unqualified"},
 		{"profile-status", "stale", "stale"},
 		{"profile-status", "stale-weights", "stale"},
 		{"profile-status", "stale-resources", "stale"},
+		{"profile-status", "stale-runtime-launch", "stale"},
+		{"profile-status", "stale-dtype", "stale"},
+		{"profile-status", "legacy-condition-schema", "unknown"},
 		{"profile-status", "legacy-selection", "unknown"},
 		{"profile-status", "legacy-observation", "unknown"},
 		{"profile-status", "malformed-conditions", "unknown"},
@@ -147,6 +162,45 @@ config=re.sub(r'^INFERENCE_CACHE_FREE_RESERVE_MIB=.*$', 'INFERENCE_CACHE_FREE_RE
 				b, err := os.ReadFile(filepath.Join(output, a.Name))
 				if err != nil || Sum(b) != a.SHA256 || int64(len(b)) != a.Size {
 					t.Fatal("artifact mismatch", err)
+				}
+			}
+			if tc.kind == "comparison" && tc.status != "failed" {
+				b, err := os.ReadFile(filepath.Join(output, "comparison", "comparison.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var report struct {
+					Recommendation string `json:"recommendation"`
+					Baseline       struct {
+						RunHash string `json:"quality_run_sha256"`
+					} `json:"baseline"`
+					Candidate struct {
+						RunHash string `json:"quality_run_sha256"`
+					} `json:"candidate"`
+					Quality struct {
+						Cross struct {
+							Status    string `json:"status"`
+							Baseline  string `json:"baseline_sha256"`
+							Candidate string `json:"candidate_sha256"`
+						} `json:"cross_profile"`
+					} `json:"quality_gates"`
+				}
+				if err := json.Unmarshal(b, &report); err != nil {
+					t.Fatal(err)
+				}
+				if report.Recommendation == "candidate" && (report.Quality.Cross.Status != "passed" ||
+					!Digest.MatchString(report.Baseline.RunHash) || !Digest.MatchString(report.Candidate.RunHash) ||
+					report.Quality.Cross.Baseline != report.Baseline.RunHash || report.Quality.Cross.Candidate != report.Candidate.RunHash) {
+					t.Fatal("candidate recommendation lacks the actual cross-profile checked-run pair")
+				}
+				if (tc.variant == "normal" || tc.variant == "declared-launch") && report.Recommendation != "candidate" {
+					t.Fatal("matching checked profiles lost their fixture candidate recommendation")
+				}
+				switch tc.variant {
+				case "cross-quality-mismatch", "cross-logprob-mismatch", "unrelated-quality", "missing-cross-evidence":
+					if report.Recommendation != "retain-baseline" || report.Quality.Cross.Status == "passed" || !strings.Contains(summary.Reason, "inconclusive") {
+						t.Fatal("unmatched numerical evidence invented same-quality eligibility")
+					}
 				}
 			}
 			if tc.status == "failed" && (len(summary.Artifacts) != 1 || summary.Artifacts[0].Name != "failure.json") {
