@@ -29,8 +29,14 @@ type attempt struct {
 	n     int
 	start time.Time
 }
+
+// MemoryAdvisor is the fixed advisory boundary. Production supplies the
+// policy-validated Agents API client; no request can select an implementation.
+type MemoryAdvisor interface {
+	Advise(context.Context, advisor.Handler) (advisor.Result, error)
+}
 type Server struct {
-	Advisor    *advisor.Client
+	Advisor    MemoryAdvisor
 	Config     config.Config
 	Engine     *engine.Engine
 	Logger     *slog.Logger

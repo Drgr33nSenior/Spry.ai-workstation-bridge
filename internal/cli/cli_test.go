@@ -64,3 +64,30 @@ func TestHelpAndSecretFlags(t *testing.T) {
 		t.Fatal("unknown flag error echoed secret value")
 	}
 }
+
+func TestAuditReadUsesPrivateAPIAndPreservesDenial(t *testing.T) {
+	credential := filepath.Join(t.TempDir(), "credential")
+	if err := os.WriteFile(credential, []byte("synthetic-fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []int{200, 403} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "GET" || r.URL.Path != "/api/v1/audit" || r.Header.Get("Authorization") != "Bearer synthetic-fixture" {
+				t.Error("incorrect audit request")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(code)
+			if code == 200 {
+				_, _ = w.Write([]byte(`[{"action":"memory.advice.requested","result":"outcome_not_observed"}]`))
+			} else {
+				_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"owner required"}}`))
+			}
+		}))
+		var out, stderr bytes.Buffer
+		got := Run([]string{"--endpoint", server.URL, "--credential-file", credential, "audit"}, &out, &stderr)
+		server.Close()
+		if (code == 200 && (got != 0 || !strings.Contains(out.String(), "outcome_not_observed"))) || (code == 403 && got != 3) {
+			t.Fatalf("status=%d exit=%d output=%s", code, got, out.String())
+		}
+	}
+}

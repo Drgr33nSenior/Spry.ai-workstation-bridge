@@ -157,6 +157,9 @@ try{
   assert.equal(await evaluate(`document.getElementById('target-confirm').value`),'');
   assert.equal(await evaluate(`state.operations.length`),beforeAdvisory,'advisory response applied a plan');
   assert.ok(await evaluate(`document.getElementById('memory-advice').textContent.includes('Unapproved advisory explanation') && !document.getElementById('memory-advice').querySelector('img') && !window.memoryInjected`),'advisory content was interpreted as HTML or approval');
+  assert.ok(await evaluate(`document.getElementById('memory-advice').textContent.includes('Token usage is unknown (not reported)')`),'missing provider accounting was presented as zero');
+  await evaluate(`state.memoryAdvice.usage={input_tokens:10,output_tokens:5,total_tokens:15};state.memoryAdvice.usage_provisional=true;document.getElementById('memory-advice').innerHTML=renderMemoryAdvice();`);
+  assert.ok(await evaluate(`document.getElementById('memory-advice').textContent.includes('Provisional token usage: 10 input, 5 output, 15 total. This is not a final bill.')`),'reported accounting lost its provisional label');
   await evaluate(`window.fetch=window.memoryOriginalFetch;delete window.memoryOriginalFetch;delete window.memoryAdvisoryPlan;document.querySelector('#plan-dialog .dialog-header button').click();`);
   console.log('PASS browser: memory unknown/incomplete/refused/candidate states, explicit export review, retained unqualified summary and advisory text without approval');
   browserStep='';

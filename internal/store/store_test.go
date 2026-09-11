@@ -21,6 +21,36 @@ func TestPruningRetainsRecoveryAncestors(t *testing.T) {
 	}
 }
 
+func TestTelemetrySnapshotCountsAndPersistenceFailure(t *testing.T) {
+	s, err := Open(dir(t), "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = s.Update(func(v *State) error {
+		for _, state := range []string{"queued", "running", "cancel-requested", "recovery-required", "failed", "cancelled", "succeeded"} {
+			v.Operations[state] = domain.Operation{State: state, UpdatedAt: time.Now(), RecoveryRequired: state == "recovery-required" || state == "failed"}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := domain.TelemetryOperations{Queued: 1, Running: 2, RecoveryRequired: 2}
+	if got, healthy := s.TelemetrySnapshot(); got != want || !healthy {
+		t.Fatalf("got %+v healthy=%v", got, healthy)
+	}
+	s.Write = func(string, []byte, os.FileMode) error { return errors.New("fixture disk full") }
+	if err = s.Update(func(v *State) error { v.Operations = map[string]domain.Operation{}; return nil }); err == nil {
+		t.Fatal("storage fault accepted")
+	}
+	if got, healthy := s.TelemetrySnapshot(); got != want || healthy {
+		t.Fatalf("invented state after failed persistence: %+v healthy=%v", got, healthy)
+	}
+	if allocs := testing.AllocsPerRun(5, func() { s.TelemetrySnapshot() }); allocs != 0 {
+		t.Fatalf("snapshot allocated: %v", allocs)
+	}
+}
+
 func dir(t *testing.T) string {
 	t.Helper()
 	p, e := filepath.EvalSymlinks(t.TempDir())

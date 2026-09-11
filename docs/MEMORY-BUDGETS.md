@@ -281,8 +281,12 @@ bridgectl --context PRIVATE_CONTEXT memory-advice --file memory-request.json
 An unavailable provider returns an explicit error. The same evidence remains
 usable through `memory-preview` and the ordinary plan/export commands.
 
-The application creates an idle `environment:none` session, then submits fixed
-input. Only `read_memory_evidence`, `explain_memory_capacity` and
+The application includes fixed initial input when it creates an
+`environment:none` session, as required by the
+[session contract](https://developers.openai.com/api/docs/guides/agents-api/sessions).
+The create response can already represent active work or a completed turn.
+Bridge inspects session/turn state; idle alone is not proof of success.
+Only `read_memory_evidence`, `explain_memory_capacity` and
 `request_memory_plan` exist, each with empty arguments and at most one execution.
 The last tool creates a plan under the requesting owner's actor identity; it
 cannot apply or approve it. Tool calls re-enter deterministic Bridge validation.
@@ -295,6 +299,37 @@ normal certificate verification and no redirect/environment proxy. Requests,
 response bytes, history, tool calls, concurrency and duration are bounded.
 Hourly admission is process-local and resets at restart.
 
+Cloud memory fields have explicit units: requested/limited RAM, shm ceiling,
+other-workload allowance and candidate use `_mib`; envelope/headroom and measured
+windows use bytes. Unknown token usage stays JSON `null`, never zero. Reported
+session usage takes precedence over turn fallback; Bridge does not add the two.
+Both are provisional observations, not a final bill, as the
+[usage contract](https://developers.openai.com/api/docs/guides/agents-api/observability)
+explains. Missing accounting cannot establish a token or spending limit.
+
+Before contacting the provider, Bridge saves a `memory.advice.requested` audit
+entry. A matching `memory.advice.finished` entry retains only fixed outcome,
+known session ID, nullable usage/source and creation/cancellation metadata.
+Its `result` string contains JSON; no explanation, raw provider error, evidence
+or credential is retained there. The existing 2000-entry audit bound applies.
+`X-Bridge-Advisory-ID` and the failure message identify the attempt. A failed
+final write preserves the requested entry and the normal storage refusal.
+This adds no journal schema or runtime approval migration.
+
+**Do not automatically retry an interrupted advisory.** A lost create response
+can mean inference started even when Bridge has no session ID. Bridge does not
+retry creation or resubmit after a daemon restart. Inspect the owner-only audit:
+
+```sh
+bridgectl --context PRIVATE_CONTEXT audit
+```
+
+Match requested/finished entries by `object`. An unmatched request means unknown
+outcome, not free work or confirmed cancellation. With a known session ID, inspect
+that session in the provider's Agents logs. Otherwise correlate the request time
+and project in those logs. Only the owner can decide whether another paid request
+is appropriate. Keep deterministic planning available while the outcome is unknown.
+
 **Unsupported:** the documented session-create contract has no per-session hard
 token/dollar ceiling. Local bounds, reported usage checks and best-effort
 cancellation do not provide one. The owner must separately provision the
@@ -303,3 +338,34 @@ queries nor changes organization administration. Cancellation acceptance is not
 proof remote computation stopped. Sessions have provider retention; review its
 data controls. No key, paid request, real account capability or spending control
 was tested. Deterministic import/planning/CLI use requires no OpenAI account.
+
+### Separate live adviser acceptance
+
+This procedure requires explicit owner approval for paid calls, a provisioned
+project with reviewed spending controls, permitted model access, private HTTPS
+management with an owner credential, and a validated non-sensitive evidence set.
+The source implementation tests use synthetic responses; they do not meet these
+prerequisites or authorize this procedure.
+
+1. Keep independent workstation recovery access available. Record the selected
+   source identities and configured provider model, without copying credentials.
+2. Make one owner-requested call using the private request described above:
+
+   ```sh
+   bridgectl --context PRIVATE_CONTEXT --deadline 30s memory-advice --file memory-request.json
+   bridgectl --context PRIVATE_CONTEXT audit
+   ```
+
+   Expect either an explanation with nullable/provisional accounting and an
+   unapproved export plan, or a fixed failure with retained attempt metadata.
+   Confirm no operation applied a resource change. Inspect the same session in
+   provider logs; do not treat local accounting as the invoice.
+3. If a second paid call is authorized, interrupt it only after provider logs
+   show that its session started. Inspect the matched audit entries and provider
+   outcome. Cancellation requested/accepted and remote terminal state are separate
+   observations. If completion preceded interruption, record cancellation as
+   untested; do not run a retry loop to manufacture a result.
+4. After any uncertain outcome, inspect the provider before another request.
+   On failure, keep the adviser disabled through the existing reviewed policy
+   procedure and continue deterministic planning. Do not delete the audit or
+   change memory limits to make the adviser test succeed.

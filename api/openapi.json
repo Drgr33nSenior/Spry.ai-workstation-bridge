@@ -1633,6 +1633,9 @@
                         "cancellation_requested": {
                           "type": "boolean"
                         },
+                        "creation_uncertain": {
+                          "type": "boolean"
+                        },
                         "session_id": {
                           "type": "string"
                         },
@@ -1648,27 +1651,40 @@
                           "type": "integer"
                         },
                         "usage": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "input_tokens": {
-                              "format": "int64",
-                              "type": "integer"
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "input_tokens": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "output_tokens": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                },
+                                "total_tokens": {
+                                  "format": "int64",
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "input_tokens",
+                                "output_tokens",
+                                "total_tokens"
+                              ],
+                              "type": "object"
                             },
-                            "output_tokens": {
-                              "format": "int64",
-                              "type": "integer"
-                            },
-                            "total_tokens": {
-                              "format": "int64",
-                              "type": "integer"
+                            {
+                              "type": "null"
                             }
-                          },
-                          "required": [
-                            "input_tokens",
-                            "output_tokens",
-                            "total_tokens"
-                          ],
-                          "type": "object"
+                          ]
+                        },
+                        "usage_provisional": {
+                          "type": "boolean"
+                        },
+                        "usage_source": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -1677,6 +1693,8 @@
                         "tool_calls",
                         "tool_failures",
                         "usage",
+                        "usage_provisional",
+                        "creation_uncertain",
                         "cancellation_requested",
                         "cancellation_accepted"
                       ],
@@ -2107,7 +2125,16 @@
                 }
               }
             },
-            "description": "Successful management response"
+            "description": "Successful management response",
+            "headers": {
+              "X-Bridge-Advisory-ID": {
+                "description": "Present after durable advisory intent. Match this object in owner-only audit; an interrupted request may already have started paid work and must not be automatically retried.",
+                "schema": {
+                  "pattern": "^[a-f0-9]{32}$",
+                  "type": "string"
+                }
+              }
+            }
           },
           "default": {
             "content": {
@@ -2139,7 +2166,16 @@
                 }
               }
             },
-            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable"
+            "description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable",
+            "headers": {
+              "X-Bridge-Advisory-ID": {
+                "description": "Present after durable advisory intent. Match this object in owner-only audit; an interrupted request may already have started paid work and must not be automatically retried.",
+                "schema": {
+                  "pattern": "^[a-f0-9]{32}$",
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Optional bounded Agents API advisory; no approval or application authority",

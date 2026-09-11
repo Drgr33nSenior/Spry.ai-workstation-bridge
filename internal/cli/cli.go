@@ -21,7 +21,7 @@ import (
 
 const usage = `Usage: bridgectl [--context FILE] [--endpoint ORIGIN] [--credential-file FILE] [--ca-file FILE] [--deadline 30s] [--json] COMMAND
 
-Read: status | models | config | resources | profiles | builds | caches | harnesses | operations [ID] | memory
+Read: status | models | config | resources | profiles | builds | caches | harnesses | operations [ID] | memory | audit (owner)
 Memory: memory-preview --file DRAFT.json | memory-advice --file REQUEST.json
         memory-inspect OPERATION_ID
 Local evidence: memory-seal --directory ABSOLUTE_DIRECTORY --source-revision SHA256 --hardware-sha256 SHA256 --boot-id UUID
@@ -162,7 +162,7 @@ func Run(args []string, out, errout io.Writer) int {
 			return report(out, err)
 		}
 		return output(out, map[string]string{"status": "exported", "output": *path, "revision": cfg.Revision})
-	case "status", "models", "config", "resources", "profiles", "builds", "caches", "harnesses", "operations", "memory":
+	case "status", "models", "config", "resources", "profiles", "builds", "caches", "harnesses", "operations", "memory", "audit":
 		path := "/api/v1/" + command
 		if command == "operations" && len(rest) == 1 {
 			if !validID(rest[0]) {

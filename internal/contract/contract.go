@@ -137,6 +137,14 @@ func Generate() ([]byte, error) {
 	paths := map[string]any{}
 	for _, e := range Endpoints {
 		operation := map[string]any{"summary": e.Summary, "x-minimum-role": e.Role, "responses": map[string]any{e.Status: map[string]any{"description": "Successful management response", "content": map[string]any{"application/json": map[string]any{"schema": schema(reflect.TypeOf(e.Response))}}}, "default": map[string]any{"description": "Structured refusal or failure; 401 authentication, 403 authorization/CSRF, 409 drift/conflict, 413 body bound, 429 capacity/rate, 503 unavailable", "content": map[string]any{"application/json": map[string]any{"schema": schema(reflect.TypeFor[Error]())}}}}}
+		if e.Path == "/api/v1/memory/advice" {
+			for _, response := range operation["responses"].(map[string]any) {
+				response.(map[string]any)["headers"] = map[string]any{"X-Bridge-Advisory-ID": map[string]any{
+					"description": "Present after durable advisory intent. Match this object in owner-only audit; an interrupted request may already have started paid work and must not be automatically retried.",
+					"schema":      map[string]any{"type": "string", "pattern": "^[a-f0-9]{32}$"},
+				}}
+			}
+		}
 		if e.Public {
 			operation["security"] = []any{}
 		}

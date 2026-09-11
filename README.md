@@ -104,6 +104,12 @@ records the SDK identity, licence, configuration limits and verification boundar
 
 ## CI and versioned build artifacts
 
+Bridge tag outputs are **unpaired** artifacts, not installer/ISO qualification.
+The installer's release/ISO builder must test the exact selected Bridge source
+against that run's sealed installer source before bundling. It records both
+source identities; ordinary Bridge CI cannot establish compatibility with an
+unspecified installer. See the selected installer's `docs/ISO.md`.
+
 | Event | Checks | Packaged artifact |
 |---|---|---|
 | Push to `main` | Unit/integration tests, race, formatting, vet, contract/manifests and vulnerability checks on Ubuntu, macOS and Arch userspace | None |

@@ -1,5 +1,159 @@
 # Verification record
 
+## Telemetry and adviser remediation — 2026-09-11
+
+Both working trees were clean at entry: Bridge
+`a6e80a3beee27c44e1272beb22a83d6b3278e8be` and installer
+`82ab8af265c2d2722e4a82d26da9bf3474351e32`. The checks below concern the
+subsequent uncommitted source changes, not a new immutable release. No installed
+service, live workload, credential, owner policy, Git index or Git history was
+changed. Earlier verification sections remain historical evidence.
+
+The final sealed installer source archive used for the race-enabled memory pair
+test has SHA-256
+`7d598dab0999ad080d41b0c4746b8a9c5862e716c5319bfe4e0d8541f4f74b9d`.
+It is retained at installer
+`test-results/telemetry-review.CkHF7h/sealed-reviewed/bootstrap-source.tar.gz`,
+with its lock and an extracted copy. This identity is source-test evidence,
+not an installed package or runtime approval.
+
+| Issue | Correction and permanent regression |
+|---|---|
+| Environment-free session lacked required initial input | `internal/advisor/client.go` creates one session with fixed input and handles active/tool/completed-turn observations. `TestInitialSessionOutcomesStartExactlyOneTurn` and `TestCreateUncertaintyNeverRetriesOrReflectsProviderData` cover the contract and uncertain creation. No message resubmission or automatic create retry. |
+| Absent usage became zero | Nullable usage with explicit provisional/source metadata. `TestUsageUnknownAndProvisionalSources`, `TestLaterUnknownUsageDoesNotReusePreviousSnapshot` and `TestUsageObservationLimitsAndUnknownUsageRemainBounded` cover missing, null, explicit zero, malformed and over-limit accounting. |
+| Refusal alert missed cluster metric names | Installer `config/alerts.yaml` covers both pinned memory-limiter families and all three signals. `tests/fixtures/telemetry/alerts_test.yaml` executes with pinned Prometheus. |
+| Host collector lacked central health reporting | Installer `host/config.alloy` self-scrapes bounded health metrics into a distinct job and direct Prometheus path. Heartbeat and forwarding-failure fixtures detect loss, including loss of the health path itself. |
+| Summary copied the operation journal | `Store.TelemetrySnapshot` returns only counts and storage health. `TestTelemetrySnapshotCountsAndPersistenceFailure` checks persistence refusal; `TestTelemetrySummaryDoesNotCloneRetainedEvents` exercises the authenticated API with 500 retained operations and 128 events each. |
+| Pair compatibility was optional in release assembly | The installer ISO/release builder now requires its sealed source, verifies the selected Bridge test exists, runs that test, and binds installer/source/recipe identities in retained `Bridge.builder.lock`. Source/archive/missing-test/failed-test/swapped-build regressions cover refusals. Bridge-only tag artifacts remain unpaired. |
+
+Additional coverage retains sanitized failed-advisory accounting in the existing
+bounded owner-only audit, uses explicit cloud memory units, and labels unknown
+or provisional usage in the real browser. Tests cover authorization, audit
+persistence faults and no automatic mutation. The generated OpenAPI documents
+nullable usage and `X-Bridge-Advisory-ID`. Clients must preserve `usage: null`;
+it is not a zero-token result. No store schema migration or installed runtime
+hash update is required. `bridgectl audit` reads retained attempts through the
+same owner authorization as the existing audit API.
+
+The installer also has an executable synthetic OTLP scope/link-attribute test.
+The pinned transform removes scope attributes and refuses linked spans; it does
+not claim to sanitize arbitrary per-link fields. These are isolated Linux image
+checks, not evidence of a leak in an installed system or a physical overload test.
+
+### Observed checks and limits
+
+Bridge uses the exact Go 1.27.1 toolchain. Test-child environments remove inherited
+`OTEL_*` variables without displaying their values; service policy still rejects
+those overrides. To repeat a command without changing the parent environment:
+
+```sh
+/bin/bash --noprofile --norc -c '
+  while IFS= read -r name; do
+    case "$name" in OTEL_*) unset "$name";; esac
+  done < <(compgen -e)
+  exec "$@"
+' bridge-check make check
+```
+
+| Command | Observed result |
+|---|---|
+| `GOTOOLCHAIN=local CGO_ENABLED=0 go test ./... -count=1` | PASS on macOS; Unix-socket tests executed, unlike the restricted review environment |
+| Focused adviser/API/auth/config/store/telemetry/CLI tests, uncached | PASS; adviser race and vet checks also passed |
+| `make check` | PASS: toolchain, fmt, vet, tests, race, generated, module tidy, OpenAPI, manifests, builds and security; govulncheck found no vulnerabilities |
+| `make browser` | PASS: Chrome 152.0.7977.83 / Node 26.8.1, including unknown/provisional usage, memory plan review, existing TLS/session/CSRF/recovery flows |
+| `make package` and `shasum -a 256 -c SHA256SUMS` in `dist` | PASS: Linux amd64 and macOS arm64/amd64 archives; service/configuration examples inspected |
+| `bash scripts/test-installer-contract.sh INSTALLER` and `--candidate INSTALLER` | PASS; known-good `67a5060` retained separately from the selected installer |
+| Actual candidate memory contract against a sealed, extracted installer source | PASS with tiny synthetic input, private output verification and the installer negative corpus; no RAM saving established |
+| Installer telemetry, serving-memory and performance scripts with explicit prepared Python | PASS: 9 + 14 + 18 + 3 + 17 + 2 Python tests and related shell fixtures |
+| Installer `make check` with the prepared child environment below | PASS with explicit skips: 55 test scripts, shell syntax/ShellCheck, YAML, Ansible syntax and local Kubernetes rendering; exclusions listed below |
+| Installer Bridge-build/bundle/Docker-wrapper/release shell fixtures | PASS, including actual source sealing and swapped build evidence refusal; not actual package installation or ISO boot |
+| Installer `bash tests/test_telemetry_stack.sh` | PASS: actual local Kustomize rendering and source policy assertions |
+| Installer `bash infrastructure/observability/validate-images.sh desktop-linux` | PASS using cached pinned images; executable Prometheus rules, Alloy parsers, host log and cluster OTLP sanitization |
+| Linux systemd gate, installed peer/cgroup behavior, K3s routes/RBAC and hardware tests | NOT RUN — this Mac is not a prepared workstation installation |
+| Paid Agents API creation/completion/cancellation and real collector refusal/forwarding failures | NOT RUN — separate owner authorization and prepared target/account required |
+
+The installer check skipped shfmt and bats because they are unavailable. It also
+skipped the real ccache repeat-build test, generated CMake/Ninja pool fixture,
+pinned GPU-operator chart rendering, streaming-image smoke test and Linux Wayland
+process-group test because their tools or explicitly selected inputs were absent.
+Real HIP IPC and Linux systemd checks did not run. Ansible syntax checks passed
+with expected empty-inventory/host-pattern warnings; they contacted no hosts.
+`make check-strict` was NOT RUN; the skipped gates prevent a strict qualification
+claim. Workflow lint was not applicable: no workflow source changed.
+
+The image checks used Linux ARM64 variants in a local Docker VM. Containers were
+non-root, read-only and capability-dropped, with no real credentials, journals or
+device mounts. Parser/log checks had no network; synthetic OTLP used an owned
+internal network, without published ports or an external route. No image was
+pulled. Logs remain in installer `test-results/telemetry-images.*`; the final
+sanitization run is `telemetry-images.vDvrQ7`. Ten stopped experimental containers
+were removed after exact identity/state/label checks; their recorded logs remain.
+This does not qualify Arch AMD64 services or real collector pressure behavior.
+
+### Initial failures and corrections
+
+The initial adviser contract fixture failed with HTTP 400 when creation omitted
+input. The telemetry summary allocation regression failed at 72 allocations for
+empty history versus 5,564 for retained history; after the counter change both
+were 46. These are local synthetic allocation results, not Threadripper latency
+or memory-bandwidth claims. The explicit cloud-unit regression also failed before
+the field-name correction. An initial new API fixture omitted Content-Type and
+received the correct 400; adding its required JSON header made it exercise the
+intended audit behavior.
+
+During collector fixture development, read-only `/tmp` blocked promtool; a bounded
+tmpfs resolved it. The absent-series expectation omitted Prometheus's derived
+`job` label. The generated Alloy fixture needed multiline syntax and its test-only
+debug sink's experimental stability flag. An attempted Unix HTTP listener was
+unsupported; the final test uses the isolated internal network instead. No
+production processor or sandbox was weakened to make these checks pass.
+Final review also added explicit memory/CPU/process limits and `--pull never`
+to both new OTLP test containers, bounded the wget request, and made the fixture
+server remove itself on completion. The final validator rerun passed with those
+restrictions and left no active test network or container.
+
+Release-gate review caught temporary comparison files inside the source tree,
+missing test files in the sealed source closure, and unbound Bridge source/recipe
+identity in a gate lock. Those checks now use external comparison files, include
+only the needed source fixtures, and reject swapped build evidence. Tests were
+expanded rather than treating mocked orchestration as archive execution.
+
+The first installer wrapper attempt lacked `HOME_LAB_PYTHON` and blocked/skipped
+its fixtures. Explicit Python 3.11.6 ran the telemetry/memory/performance tests,
+but the full source check then failed importing `markupsafe` for Jinja rendering.
+An existing prepared Python 3.11.1 environment contains pinned PyYAML 6.0.3,
+Jinja2 3.1.6 and MarkupSafe 3.0.3. Its targeted rendering check passed with
+`PYTHONNOUSERSITE=1`. A subsequent ISO fixture still used bare `python3` and failed
+to import `yaml`; the prepared environment must also precede the inherited PATH
+in the test child. No dependency was installed or upgraded.
+The next complete run exposed an incomplete release-coordinator fixture: its
+mock source-preparation command created a lock but not the newly required source
+archive. The fixture now creates a synthetic archive placeholder for its mocked
+wrapper; production archive verification remains real and separately tested.
+The exact prepared-environment release fixture passed after that correction.
+The subsequent complete installer `make check` exited 0 with the exclusions above.
+Final archive checksums passed. The first manual archive comparison used a
+nonexistent `server.lan.example.json` path; discovery identified the actual
+`server.vpn.example.json`. Comparing every packaged JSON/service/socket example
+against its source then passed. This was an inspection-command error, not a
+missing package input.
+
+For a prepared environment, select both the explicit fixture interpreter and
+the bare `python3` used by subprocesses. These overrides affect only the child:
+
+```sh
+INSTALLER=/absolute/reviewed/installer
+PREPARED_PYTHON=/absolute/prepared/environment/bin/python
+env PATH="$(dirname "$PREPARED_PYTHON"):$PATH" PYTHONNOUSERSITE=1 \
+  HOME_LAB_PYTHON="$PREPARED_PYTHON" make -C "$INSTALLER" check
+```
+
+Follow [live adviser acceptance](MEMORY-BUDGETS.md#separate-live-adviser-acceptance)
+and the selected installer's telemetry acceptance procedure only after separate
+owner authorization. Keep deterministic planning and independent recovery access.
+Do not infer a safe memory limit, GPU performance, cgroup enforcement or deployment
+readiness from these source, browser, image-parser or cross-build results.
+
 ## Memory-budget integration — 2026-09-11
 
 This section records source and isolated-fixture evidence, not workstation RAM

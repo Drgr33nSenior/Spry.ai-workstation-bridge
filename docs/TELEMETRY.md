@@ -4,7 +4,9 @@ Bridge can send management metrics and sampled traces to a private OpenTelemetry
 Protocol (OTLP) collector, such as Grafana Alloy. Export is disabled by default.
 The API does not add a metrics listener or public ingress. Telemetry is lossy
 diagnostic data, not the durable audit, an approval mechanism or a GPU profiler.
-No cloud-agent execution or OpenAI Agents integration is included.
+The separate, optional [Agents API adviser](MEMORY-BUDGETS.md#optional-agents-api-advisory)
+uses selected sanitized memory evidence. It cannot query arbitrary telemetry,
+approve plans or execute workload changes.
 
 ## Owner configuration
 
@@ -76,8 +78,9 @@ Metrics use cumulative counters and explicit histograms, a 30-second interval
 and a 256-series cardinality limit per instrument. Traces use a nonblocking
 256-span queue, batches of up to 64 and a five-second batch interval. Queue
 overflow can drop spans. Sampling is bounded from zero to one. Each span allows
-at most eight attributes of at most 128 characters each. Requests are split at
-1 MiB; response bodies are limited to 64 KiB and headers to 16 KiB. Export has a
+at most eight attributes of at most 128 characters each. Requests are capped at
+1 MiB: oversized requests are rejected, not split. Response bodies are limited
+to 64 KiB and headers to 16 KiB. Export has a
 two-second timeout and no retries. Shutdown has a separate three-second bound.
 These are software bounds, not measured workstation RAM or CPU budgets.
 
@@ -99,6 +102,8 @@ availability, counts of queued/running/recovery-required operations, export
 states, backend state and five named measurements. It returns HTTP 200 with
 explicit unavailable/error states when Prometheus fails. It never returns raw
 operation records, audit entries, configuration, backend URLs or backend labels.
+Operation counts and storage health use a small snapshot under the store lock;
+summary requests do not copy or sort retained operation events.
 
 | Measurement | Fixed source and interpretation |
 |---|---|

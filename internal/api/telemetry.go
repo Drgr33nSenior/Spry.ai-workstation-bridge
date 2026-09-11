@@ -52,18 +52,8 @@ func (s *Server) telemetrySummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	metrics, traces := s.Engine.Telemetry.Status()
-	out := domain.TelemetrySummary{ObservedAt: time.Now().UTC(), Mode: s.Config.Mode, MutationStorageAvailable: s.Engine.DB.Healthy(), MetricsExport: metrics, TracesExport: traces}
-	for _, op := range s.Engine.Operations() {
-		if op.State == "queued" {
-			out.Operations.Queued++
-		}
-		if op.State == "running" || op.State == "cancel-requested" {
-			out.Operations.Running++
-		}
-		if op.RecoveryRequired {
-			out.Operations.RecoveryRequired++
-		}
-	}
+	operations, healthy := s.Engine.DB.TelemetrySnapshot()
+	out := domain.TelemetrySummary{ObservedAt: time.Now().UTC(), Mode: s.Config.Mode, MutationStorageAvailable: healthy, Operations: operations, MetricsExport: metrics, TracesExport: traces}
 	out.Backend, out.Values = s.prometheus.Summary(r.Context())
 	s.json(w, http.StatusOK, out)
 }

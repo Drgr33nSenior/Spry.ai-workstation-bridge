@@ -146,6 +146,26 @@ func (s *Store) AuthState() State {
 	return out
 }
 func (s *Store) Healthy() bool { s.mu.Lock(); defer s.mu.Unlock(); return !s.poisoned }
+
+// TelemetrySnapshot reads only counters and health under one lock. It must not
+// clone, serialize or sort the retained operation journal or its event payloads.
+func (s *Store) TelemetrySnapshot() (domain.TelemetryOperations, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out domain.TelemetryOperations
+	for _, op := range s.state.Operations {
+		switch op.State {
+		case "queued":
+			out.Queued++
+		case "running", "cancel-requested":
+			out.Running++
+		}
+		if op.RecoveryRequired {
+			out.RecoveryRequired++
+		}
+	}
+	return out, !s.poisoned
+}
 func (s *Store) persist(v State) error {
 	b, e := json.Marshal(v)
 	if e != nil {

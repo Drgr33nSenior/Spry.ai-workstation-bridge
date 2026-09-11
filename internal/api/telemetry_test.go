@@ -12,9 +12,44 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/api"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/config"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/domain"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/store"
 )
+
+func TestTelemetrySummaryDoesNotCloneRetainedEvents(t *testing.T) {
+	f := setup(t)
+	h := api.New(config.Config{Mode: "demo", AllowedHosts: []string{"bridge.test"}}, f.eng, nil).Handler()
+	sample := func() {
+		r := httptest.NewRequest("GET", "http://bridge.test/api/v1/telemetry/summary", nil)
+		r.Header.Set("Authorization", "Bearer "+f.tokens["owner"])
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != 200 || strings.Contains(w.Body.String(), "PRIVATE_EVENT") {
+			t.Fatal("invalid or leaking telemetry summary", w.Code)
+		}
+	}
+	small := testing.AllocsPerRun(3, sample)
+	if err := f.db.Update(func(v *store.State) error {
+		for i := 0; i < 500; i++ {
+			id := fmt.Sprint(i)
+			events := make([]domain.Progress, 128)
+			for j := range events {
+				events[j].Message = "PRIVATE_EVENT"
+			}
+			v.Operations[id] = domain.Operation{ID: id, State: "succeeded", UpdatedAt: time.Now(), Events: events}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	large := testing.AllocsPerRun(3, sample)
+	t.Logf("summary allocations empty=%.0f retained=%.0f", small, large)
+	if large > small+100 {
+		t.Fatalf("summary allocations grew with retained event payloads: %.0f -> %.0f", small, large)
+	}
+}
 
 func TestTelemetrySummaryOwnerPolicyAndUnavailable(t *testing.T) {
 	f := setup(t)

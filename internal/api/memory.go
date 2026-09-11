@@ -10,6 +10,7 @@ import (
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/auth"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/config"
 	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/domain"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/store"
 )
 
 func (s *Server) memoryEvidence(w http.ResponseWriter, r *http.Request) {
@@ -152,10 +153,17 @@ func cloudMemory(s domain.MemorySummary) any {
 		}
 	}
 	return struct {
-		Status                                                        string `json:"status"`
-		Requested, Limited, SHM, Other, Candidate, Envelope, Headroom int64
-		Cold, Warm                                                    int
-		Windows                                                       []window
+		Status    string   `json:"status"`
+		Requested int64    `json:"requested_mib"`
+		Limited   int64    `json:"limited_mib"`
+		SHM       int64    `json:"shm_ceiling_mib"`
+		Other     int64    `json:"other_mib"`
+		Candidate int64    `json:"candidate_mib"`
+		Envelope  int64    `json:"envelope_bytes"`
+		Headroom  int64    `json:"headroom_bytes"`
+		Cold      int      `json:"cold_observations"`
+		Warm      int      `json:"warm_observations"`
+		Windows   []window `json:"windows"`
 	}{status, s.BaselineMiB, s.LimitedMiB, s.SharedMemoryMiB, s.OtherMiB, s.CandidateMiB, s.EnvelopeBytes, s.HeadroomBytes, s.Cold, s.Warm, windows}
 }
 func (s *Server) memoryAdvice(w http.ResponseWriter, r *http.Request) {
@@ -191,6 +199,17 @@ func (s *Server) memoryAdvice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var plan *domain.Plan
+	// Record intent before any potentially paid request. A crash or failed final
+	// journal write leaves an explicit unknown outcome, not an invitation to retry.
+	attemptID := store.ID()
+	if e = s.Engine.DB.Update(func(v *store.State) error {
+		store.Event(v, actor(r).ID, "memory.advice.requested", attemptID, "outcome_not_observed")
+		return nil
+	}); e != nil {
+		s.fail(w, e)
+		return
+	}
+	w.Header().Set("X-Bridge-Advisory-ID", attemptID)
 	result, e := s.Advisor.Advise(r.Context(), func(ctx context.Context, name string) (json.RawMessage, error) {
 		identity := actor(r)
 		state := s.Engine.DB.AuthState()
@@ -233,8 +252,35 @@ func (s *Server) memoryAdvice(w http.ResponseWriter, r *http.Request) {
 			return nil, domain.Fail("forbidden", "tool is not allowed")
 		}
 	})
+	// Audit only fixed accounting metadata. In particular, do not persist a
+	// provider's explanation or error text, even when an advisory fails.
+	outcome := "completed"
 	if e != nil {
-		s.fail(w, domain.Fail("unavailable", "Agents API advisory unavailable or bounded run ended; inspect retained plans, deterministic workflow remains available"))
+		outcome = "failed_or_incomplete"
+	}
+	accounting, marshalErr := json.Marshal(struct {
+		Outcome               string         `json:"outcome"`
+		SessionID             string         `json:"session_id,omitempty"`
+		Usage                 *advisor.Usage `json:"usage"`
+		UsageProvisional      bool           `json:"usage_provisional"`
+		UsageSource           string         `json:"usage_source,omitempty"`
+		CreationUncertain     bool           `json:"creation_uncertain"`
+		CancellationRequested bool           `json:"cancellation_requested"`
+		CancellationAccepted  bool           `json:"cancellation_accepted"`
+	}{outcome, result.SessionID, result.Usage, result.UsageProvisional, result.UsageSource, result.CreationUncertain, result.CancellationRequested, result.CancellationAccepted})
+	if marshalErr != nil {
+		s.fail(w, domain.Fail("internal", "advisory accounting unavailable; inspect the requested audit record before any new advisory"))
+		return
+	}
+	if recordErr := s.Engine.DB.Update(func(v *store.State) error {
+		store.Event(v, actor(r).ID, "memory.advice.finished", attemptID, string(accounting))
+		return nil
+	}); recordErr != nil {
+		s.fail(w, recordErr)
+		return
+	}
+	if e != nil {
+		s.fail(w, domain.Fail("unavailable", "Agents API advisory unavailable or bounded run ended; inspect audit attempt "+attemptID+" and retained plans before a new paid request. Unknown creation may already have started inference; cancellation acceptance is not proof of completion. Deterministic workflow remains available"))
 		return
 	}
 	s.json(w, 200, MemoryAdvice{Advisory: result, Plan: plan})
