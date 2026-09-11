@@ -5,9 +5,8 @@ retained failed reports and original-helper inspection after interruption.
 Historical warm reports do not establish current readiness. No new operation
 installs a candidate, deletes caches or bypasses qualification/recovery fences.
 
-These procedures are for an authorized owner on the non-production workstation.
-No installation, service change, cluster change, VPN/DNS setup or reboot was run
-during implementation. Review the target checklist before installing artifacts.
+These procedures are for an authorized owner on a permitted target. Review the
+target checklist before installing artifacts.
 
 ## Prepare installation artifacts
 
@@ -39,10 +38,8 @@ The separate read-only reference tree for catalog import must contain the
 reviewed `versions.lock`, workstation example config, selected deployment
 profiles and RAG integrity files used by `internal/catalog`. Reference and runtime
 trees can be packaged from the same reviewed source revision, but must not be a
-writable development checkout. Record the reviewed source revision and the
-content hashes of the prepared files. Initial implementation evidence predates
-the repositories' first commits and uses content hashes; that historical limit
-does not remove the need to record a revision for a later installation.
+writable development checkout. Record the source revision and content hashes of
+the prepared files.
 
 Resolve UIDs on the target. The examples' numeric values are placeholders, not
 the target inventory. `bridge` runs the controller, `bridge-worker` runs builds,
@@ -74,9 +71,18 @@ Provision the managed model root with the existing reviewed workload reader GID
 and mode 2750 before starting the controller. Only that root needs setgid for
 new revision construction. Published directories are 0750, files/receipts 0640;
 the controller inherits and verifies GIDs, never changes them. Keep both
-`UMask=0077` and `RestrictSUIDSGID=yes`. Follow the bounded
-[snapshot permission migration](REMEDIATION.md#published-model-permissions)
-for legacy snapshots; do not recursively chmod shared storage.
+`UMask=0077` and `RestrictSUIDSGID=yes`.
+
+For an existing snapshot, first submit `model.verify`. If its complete receipt,
+tree, hashes and GID are valid, submit a `model.stage` plan for the same selected
+model and revision. Repeat staging repairs only that verified managed tree; it
+does not redownload a valid snapshot or change unrelated paths. It accepts legacy
+2750 directories and normalizes the selected publication tree to 0750/0640.
+Missing receipts, unexpected entries, symlinks, wrong groups or unreadable
+ancestors refuse repair before any permission change. Do not use recursive
+`chmod`/`chown`. If the service cannot safely inspect a snapshot, stop writers,
+preserve its receipt and journals, and restore only the exact snapshot from an
+owner-verified backup before verification.
 
 Use `deployment/server.local.example.json` as `/etc/bridge/server.json`. Select
 the actual node name consistently in the server, helper and workstation config.
@@ -133,7 +139,6 @@ Live HTTP binds only loopback and is CLI-only (`browser_sessions: false`).
 Browser management requires `browser_sessions: true`, a dedicated trusted HTTPS
 hostname and a valid certificate, including for a loopback listener. All services
 at that hostname share the cookie trust boundary; ports do not isolate cookies.
-See [session migration](REMEDIATION.md#private-browser-migration).
 A network listener requires explicit HTTPS,
 an exact management origin and a certificate whose SAN identifies its hostname.
 `deployment/server.vpn.example.json` uses the reserved documentation address
@@ -162,6 +167,13 @@ proxy headers. Family/friend public application accounts, VPN membership and
 private source IPs do not grant Bridge access. Keep chat/inference ingress and
 credentials separate; Bridge does not proxy their requests.
 
+Live browser cookies are `__Host-bridge_session_v2`: Secure, HttpOnly,
+SameSite=Strict, host-only and `Path=/`. A prior `bridge_session` cookie is
+ignored and expired at logout; users sign in again after a browser-session policy
+upgrade. Cookies are not isolated by port, so do not host an untrusted HTTPS
+application at the management hostname. Demo cookies have a separate purpose and
+must never receive a live credential.
+
 ## Kubernetes identity and rotation
 
 Review the scoped RBAC example in `deployment` before owner-controlled apply.
@@ -176,8 +188,8 @@ The named Deployment rule includes LIST because pinned
 [kubectl v0.35.7 rollout status](https://github.com/kubernetes/kubectl/blob/v0.35.7/pkg/cmd/rollout/rollout_status.go#L170-L185)
 uses a `metadata.name`-filtered List/Watch. The matching
 [API-server request parser](https://github.com/kubernetes/apiserver/blob/v0.35.7/pkg/endpoints/request/requestinfo.go#L204-L230)
-retains that exact name for authorization. This mechanism was verified on
-2026-09-08. Keep `resourceNames`; an unfiltered list must remain denied.
+retains that exact name for authorization. Keep `resourceNames`; an unfiltered
+list must remain denied.
 
 Provision a dedicated service-account credential or client certificate using
 the cluster's existing approved issuance process. Write credentials directly to
@@ -216,9 +228,9 @@ under the owner's established secret-backup controls; do not export them through
 Bridge. Verify backup readability and permissions in an isolated directory.
 
 Check the new schema and adapter contract versions before replacing binaries.
-Version 1 retains recovery links without journal migration; old browser sessions
-are invalidated by the new generation binding. Follow [REMEDIATION.md](REMEDIATION.md)
-before upgrading an existing HTTP browser configuration. Unknown store/helper versions refuse
+Version 1 retains recovery links without journal migration. Browser-session
+generation changes invalidate old sessions; require users to sign in again.
+Unknown store/helper versions refuse
 startup. Restore a backup only with all relevant writers stopped. Never restore
 an old API database to infer that newer GPU effects did not occur. Inspect the
 root helper journal and real workload/device state first. Credential recovery
@@ -254,3 +266,45 @@ and inspect the original operation. This checks independent helper completion
 without redispatch or GPU restoration. Retain failed inputs and partial outputs;
 they are not qualified or exportable successes. See the
 [memory failure procedure](MEMORY-BUDGETS.md#import-plan-confirm-and-export).
+
+## Staging sandbox and delegated-cgroup qualification
+
+Before relying on model-reader permissions under the packaged service sandbox,
+run the disposable staging test from a reviewed source checkout on an authorized
+local Docker engine with the pinned image already available:
+
+```sh
+BRIDGE_STAGING_SANDBOX_RUN=1 bash scripts/test-staging-restrict-sxid-linux.sh
+```
+
+The test uses container-local temporary storage and an unprivileged writer and
+reader. It must show that partials remain unreadable, published nested files and
+receipts are readable to the configured reader group, and set-ID permission
+requests are denied while ordinary publication modes work. It is not a complete
+installed-systemd or PVC qualification. Do not use a remote engine, privileged
+container, host model mount or relaxed security policy to run it.
+
+The worker also requires a writable delegated cgroup v2 subtree. The worker must
+find `cpu`, `memory` and `pids` controllers, enable them in its own empty parent,
+verify its `supervisor` placement, and read back every child limit before starting
+a build. Missing delegation, an occupied parent or unavailable limit files are
+refusals. The qualification checklist contains the owner-run kernel test;
+filesystem fixtures do not prove kernel enforcement.
+
+For a kernel-level test, create an empty disposable delegated subtree through
+the owner's normal systemd process. It must have `Delegate=cpu memory pids`,
+`DelegateSubgroup=supervisor`, no unrelated processes, and a test shell in the
+supervisor subgroup. Never use the installed worker subtree. From that shell:
+
+```sh
+BRIDGE_CGROUP_TEST_ALLOW=disposable-delegated-subtree \
+BRIDGE_CGROUP_TEST_ROOT=/sys/fs/cgroup/OWNER_DELEGATION/bridge-cgroup-test-001 \
+env GOTOOLCHAIN=local CGO_ENABLED=0 go test ./internal/worker \
+  -run '^TestLinuxDelegatedCgroupIntegration$' -count=1 -v
+```
+
+Replace only the path with the exact authorized disposable subtree. The test
+creates and removes only its empty child cgroup, applies small limits, starts a
+trivial descendant and checks termination. On failure, preserve observations and
+let the owner dispose of the dedicated test unit. Do not loosen host controllers,
+sandbox policy or service permissions.

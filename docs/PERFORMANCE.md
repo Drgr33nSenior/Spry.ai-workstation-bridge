@@ -23,8 +23,8 @@ its current typed protocol. Bridge does not start extra warmup or infer it from
 HTTP readiness. The existing non-root owner-run harness needs an explicitly
 controlled no-transition window: it is not newly serialized with the root-only
 session lock. Do not overlap it with AI/gaming changes. Automatic Bridge warmup
-needs a separately reviewed non-root execution/lock protocol. Lock permissions
-and existing Kubernetes probes were not weakened.
+needs a separately reviewed non-root execution/lock protocol. Keep lock
+permissions and Kubernetes health/readiness probes intact.
 
 ## Prepare a sealed bundle
 
@@ -50,8 +50,8 @@ not a complete policy or a valid digest:
 ```json
 {
   "performance_sources": {
-    "comparison-20260911": {
-      "path": "/var/lib/bridge-performance-inbox/comparison-20260911",
+    "comparison-baseline": {
+      "path": "/var/lib/bridge-performance-inbox/comparison-baseline",
       "sha256": "SHA256_OF_REVIEWED_MANIFEST_JSON"
     }
   }
@@ -60,7 +60,7 @@ not a complete policy or a valid digest:
 
 All ancestors must be protected. Up to twenty sources are permitted. The API
 accepts IDs/hashes, never these paths. Installed tool approvals must separately
-cover the new analysis modules, coding corpus and existing runtime closure.
+cover the analysis modules, coding corpus and runtime closure.
 Reference import or source-test hashes cannot grant execution authority.
 Policy reload still uses the established reviewed stopped-service procedure.
 The example policy approves no sources.
@@ -89,7 +89,7 @@ private typed draft:
   "target": "EXACT_TARGET",
   "source_revision": "CURRENT_CONFIGURATION_SHA256",
   "performance": {
-    "evidence_id": "comparison-20260911",
+    "evidence_id": "comparison-baseline",
     "evidence_sha256": "SHA256_OF_REVIEWED_MANIFEST_JSON",
     "kind": "comparison"
   }
@@ -121,6 +121,24 @@ Kind `profile-status` evaluates a retained selection against a newly sealed
 observed identity. Missing/old observations yield unknown; model, runtime,
 software, tokenizer, workload, launch or hardware changes yield stale. Status
 is as of the observation, never an automatic qualification or background probe.
+Selections also bind the retained model-file, settings, resource and runtime
+source hashes. A fresh status observation must include these `producer_conditions`
+alongside the seven identity fields. Legacy selections or observations without
+them report unknown unless existing identity fields already prove drift. Retain
+those records and collect a new complete observation; never copy current hashes
+into an old selection to make it appear current.
+Every outcome includes a bounded reason. An identified crash loop or current
+container termination is unavailable, not model loading. Historical failures do
+not make a recovered Ready container unhealthy; representative warmth remains
+separate and must be re-established for the current process.
+
+Comparison inputs must retain the finalized serving result, its original
+runtime JSON and matching startup evidence. Manifest declarations cannot replace
+producer identity. Numerical-quality summaries must reference the actual two
+checked kernel runs. Intermediate provenance states are refused; partial or
+aborted repetitions remain inconclusive. For older bundles with missing bindings,
+retain the original and create a new private bundle from the original producer
+artifacts. Recollect missing observations; do not edit a result into success.
 
 After disconnect/restart, `performance-inspect` queries the original helper. It
 never redispatches or settles unrelated GPU fences. Preserve both journals and
@@ -128,11 +146,19 @@ retained inputs. Failed read-only analysis does not invent uncertain GPU effects
 
 ## Compatibility and target checks
 
-Contract v1/store schema 1 gain additive fields/actions; old helpers refuse them
-without fallback. The selected installer release builder now requires both
+Contract v1/store schema 1 support typed performance fields/actions; helpers
+that lack these actions refuse them without fallback. The selected installer
+release builder requires both
 named memory and performance tests against its exact source export. An unpaired
-Bridge tag archive is not pair evidence. The retained known-good catalog fixture
-is unchanged. No release pin or installed approved hash was changed here.
+Bridge tag archive is not pair evidence. Keep the known-good catalog fixture
+separate from the current candidate. Source compatibility does not authorize
+changing installed runtime hashes or promoting an unqualified workload.
+The performance gate exercises actual Python seal/inspect/export commands and
+Go summary/artifact validation for all eight kinds, including incomplete and
+refused inputs. Runtime-package closure is checked separately from the broader
+source export. Full and metrics telemetry render from runtime-allowlisted assets;
+the helper passes verified telemetry evidence to the memory planner in either
+profile. Planning allowance is not measured RSS or free capacity.
 
 Before using a candidate on hardware:
 
@@ -153,8 +179,8 @@ Before using a candidate on hardware:
 Fixtures establish no speedup, safe RAM reduction, sandbox/cgroup enforcement,
 GPU handover, encoding, cache quota or deployment readiness.
 
-These commands are for the authorized non-root owner on the target, not this
-development task. Replace placeholders with reviewed inputs, select a
+These commands are for the authorized non-root owner on the target.
+Replace placeholders with reviewed inputs, select a
 no-transition collection window, and use a new output path each time:
 
 ```sh

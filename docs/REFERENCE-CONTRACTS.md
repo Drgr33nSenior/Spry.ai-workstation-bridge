@@ -1,12 +1,12 @@
 # Reference and live adapter contracts
 
-Original baseline inspection: 2026-09-08. The current Qwen pin review is recorded
-below. The reference repository is
-`/Users/uk-gr9yjx0l0y/Projects/ArchLinuxThreadripperAI`. It had no `HEAD` during
-inspection. Source files were untracked, and IDE files were staged. File hashes,
-not a fabricated clean Git revision, identify the imported source. Bridge does
-not install or execute that development checkout. Its live helper requires a
-separately reviewed, root-owned installed runtime manifest.
+Bridge integrates with the selected
+[workstation installer](https://github.com/Drgr33nSenior/ArchLinuxThreadripper).
+The installer owns package/model locks, source manifests and host workflows.
+Bridge does not execute a development checkout: its live helper requires a
+reviewed, root-owned installed runtime and independently approved artifact hashes.
+Use [VERIFICATION.md](VERIFICATION.md) for repeatable compatibility checks and
+[HOST-EXECUTOR.md](HOST-EXECUTOR.md) for provisioning and trust boundaries.
 
 | Requirement | Existing source/contract | Bridge implementation | Tests | Hardware qualification |
 | --- | --- | --- | --- | --- |
@@ -22,9 +22,9 @@ separately reviewed, root-owned installed runtime manifest.
 
 ## Immutable upstream evidence
 
-The Hugging Face revision API returned these exact identities and full snapshot
-file metadata on 2026-09-08. Only small public metadata was fetched during
-implementation. Model weights were not downloaded.
+The model catalog binds immutable upstream revisions and snapshot metadata.
+Compare it with the selected installer's `versions.lock` before preparing a
+new runtime; a matching model name alone is insufficient.
 
 | Model | Exact revision | Full snapshot bytes | Reviewed representation |
 | --- | --- | ---: | --- |
@@ -55,14 +55,11 @@ The native client schemas are bound to
 [Qwen Code 0.23.2](https://github.com/QwenLM/qwen-code/tree/f56de980b316cd5410f067fbb62357481ebd66b8),
 [DSH](https://github.com/deepseek-ai/deepseek-harness/tree/c389f96bf3a9b6807cb71ed6bdad5849be0df6d8), and
 [Hermes](https://github.com/NousResearch/hermes-agent/tree/13fb5e1eceba51fc45a48b5d95a357e144d42689).
-The Qwen patch contract was rechecked on 9 September 2026 against installer
-`67a506090e8ecf696190e0be55f865e3ce054d0e`, starting from clean Bridge
-`deb6a93fcbb35fe7ea44f085b78d1ac174729d1b`. The earlier candidate patch was not
-present. Reviewed [settings schema](https://github.com/QwenLM/qwen-code/blob/f56de980b316cd5410f067fbb62357481ebd66b8/packages/cli/src/config/settingsSchema.ts)
+The pinned Qwen [settings schema](https://github.com/QwenLM/qwen-code/blob/f56de980b316cd5410f067fbb62357481ebd66b8/packages/cli/src/config/settingsSchema.ts)
 and [generation configuration](https://github.com/QwenLM/qwen-code/blob/f56de980b316cd5410f067fbb62357481ebd66b8/packages/core/src/core/contentGenerator.ts)
 retain the explicit OpenAI provider, credential environment key, context/output
 budgets, timeout and approval fields used here. This is schema/source evidence,
-not execution of the installed Qwen client. DSH and Hermes pins are unchanged.
+not execution of the installed Qwen client.
 
 `internal/catalog/testdata/installer` contains the pinned installer's exported
 native bundle and lock. The catalog test checks all three clients, metadata and
@@ -76,19 +73,9 @@ bash scripts/test-installer-contract.sh /absolute/path/to/ArchLinuxThreadripperA
 The script exports the exact commit to a private temporary directory; it does
 not check out a branch, run an installer or launch a client. It fails if that
 commit or a required tool is unavailable. Import-time drift refusal remains
-enabled. Previously generated 0.23.0 bundles require a fresh, reviewed export;
+enabled. Bundles that differ from the selected client pin require a fresh export;
 do not edit their checksums to bypass validation. Root-owned installed runtime
-manifests and owner-reviewed executable hashes are unchanged and must be
-reviewed separately before deployment.
-
-Validation for this reconciliation: `go test -count=1 -v ./internal/catalog
-./internal/client`, the pinned cross-repository script, `make check`, and a fresh
-`go test -count=1 -json ./...` all passed on macOS/arm64 with Go 1.27.1. The fresh
-run reported 112 top-level tests passed and one GNU-install/Linux package-test
-skip. Linux-tagged staging/sandbox, deployment-permission, peer-credential and
-cgroup/namespace tests were excluded on macOS. Compatible Linux systemd and
-live Kubernetes enforcement were not verified. The optional browser suite and
-installed Qwen execution were not run. Govulncheck reported no vulnerabilities.
+manifests and executable hashes require separate review before deployment.
 
 DSH supports only the pinned ACP profile. Hermes's output-token cap remains
 provider-owned. Qwen's existing system settings policy is never overridden.
@@ -158,8 +145,8 @@ On an owner-controlled target, inspect the existing tools before preparing
 policy. The reviewed optional isolation tools are
 [bubblewrap v0.12.0](https://github.com/containers/bubblewrap/releases/tag/v0.12.0)
 and [Buildah v1.45.0](https://github.com/containers/buildah/releases/tag/v1.45.0).
-These release identities were resolved on 2026-09-08. Record executable hashes
-from the installed target and check compatibility before any source job:
+Record executable hashes from the installed target and check compatibility
+before any source job:
 
 ```sh
 /usr/bin/bwrap --version
@@ -183,8 +170,8 @@ the API.
 
 Prepare the exact
 [llama.cpp commit](https://github.com/ggml-org/llama.cpp/tree/427291b5b34cd914a31b3fd3b61a68f6184f4b9f)
-as an immutable source export. The tree at that commit has no symlinks according
-to the complete GitHub tree response. These commands generate local review
+as an immutable source export. Verify that the exported tree meets the worker's
+symlink and file-type restrictions. These commands generate local review
 artifacts and do not install or compile the source:
 
 ```sh
@@ -235,7 +222,7 @@ Before creating a job, the worker validates its own delegated cgroup v2 parent,
 requires itself in the `supervisor` subgroup and no processes in the parent,
 enables available cpu/memory/pids controllers, then reads back enablement and
 child CPU/RAM/no-swap/PID limits. Any failure refuses launch. No ancestor is
-modified. The [disposable kernel test](REMEDIATION.md#disposable-linux-cgroup-qualification)
+modified. The [target qualification guide](QUALIFICATION.md)
 is opt-in; filesystem fixtures do not establish kernel enforcement.
 
 Successful jobs retain outputs, a bounded local `build.log`, CMake output where
@@ -278,7 +265,7 @@ read-only. If that policy rejects the archive, the build fails; Bridge does not
 weaken the policy. No Docker socket, root-equivalent group, FUSE device, registry
 credential or image publication is involved.
 
-## Qualification and recovery observations
+## Qualification and recovery
 
 Run the fixture checks without private inputs:
 
@@ -297,11 +284,10 @@ units with the installed target's `systemd-analyze verify`, including
 bounded named test job. Stop and preserve the operation, cgroup and scratch
 artifacts if any descendant or outcome is uncertain.
 
-NOT RUN — target hardware unavailable: native HIP/Vulkan builds, real model
-downloads, apt dependency closure, rootless Sunshine image construction, cgroup
-resource/cancellation behavior, systemd service execution, K3s RBAC/admission,
-GPU handover, encoding and performance. Follow `docs/HOST-EXECUTOR.md` and the
-reference `docs/HOME-LAB.md`, `docs/AI-PERFORMANCE.md`, `docs/MODELS.md` and
-`docs/SUNSHINE.md` on the owner-controlled target. Retain zero replicas until
-their exact target/image/model checks pass. Source tests make no claim about
-VRAM pooling, memory bandwidth, P2P, ECC, model quality or workstation safety.
+Qualify native HIP/Vulkan builds, model-reader access, offline dependency
+closure, rootless Sunshine builds, cgroup cancellation, installed services,
+K3s RBAC/admission and GPU handover on the owner-controlled target. Follow
+[HOST-EXECUTOR.md](HOST-EXECUTOR.md), [QUALIFICATION.md](QUALIFICATION.md) and
+the installer's workload runbooks. Retain zero replicas until the exact
+target/image/model checks pass. Source tests do not establish memory bandwidth,
+P2P, ECC stability, model quality, encoding performance or workstation safety.

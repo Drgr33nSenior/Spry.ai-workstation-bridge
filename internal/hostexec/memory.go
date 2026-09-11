@@ -527,9 +527,9 @@ func (e *Executor) executeMemory(ctx context.Context, r Request, lock *os.File) 
 			return nil, err
 		}
 		output := filepath.Join(dir, "output")
-		args := []string{"rocm", "serving-memory-plan", filepath.Join(root, "deployment.json"), filepath.Join(root, "workload.json"), filepath.Join(root, "resource-plan.json"), output, "--other-mib", strconv.FormatInt(r.Draft.Memory.OtherMiB, 10)}
-		for _, id := range m.Observations {
-			args = append(args, "--observation", filepath.Join(root, "observations", id, "startup"), filepath.Join(root, "observations", id, "serving"))
+		args, err := memoryPlannerArgs(root, output, m, r.Draft.Memory.OtherMiB)
+		if err != nil {
+			return nil, err
 		}
 		env := append(e.environment(), "PYTHONDONTWRITEBYTECODE=1")
 		_, err = runFixed(ctx, filepath.Join(e.policy.RuntimeRoot, "bin/workstationctl"), args, env, lock, nil, 16<<10)
@@ -559,6 +559,24 @@ func (e *Executor) executeMemory(ctx context.Context, r Request, lock *os.File) 
 		return nil, err
 	}
 	return json.Marshal(s)
+}
+
+// memoryPlannerArgs is the only production argument construction for the
+// installed deterministic planner. It resolves telemetry from the sealed tree,
+// rather than accepting a caller-provided option path.
+func memoryPlannerArgs(root, output string, m mem.Manifest, otherMiB int64) ([]string, error) {
+	args := []string{"rocm", "serving-memory-plan", filepath.Join(root, "deployment.json"), filepath.Join(root, "workload.json"), filepath.Join(root, "resource-plan.json"), output, "--other-mib", strconv.FormatInt(otherMiB, 10)}
+	telemetry, err := mem.Telemetry(root, m)
+	if err != nil {
+		return nil, errors.New("sealed telemetry evidence changed or is invalid during generation")
+	}
+	if telemetry != nil {
+		args = append(args, "--telemetry-evidence", filepath.Join(root, "telemetry", "evidence.json"))
+	}
+	for _, id := range m.Observations {
+		args = append(args, "--observation", filepath.Join(root, "observations", id, "startup"), filepath.Join(root, "observations", id, "serving"))
+	}
+	return args, nil
 }
 
 func memoryTreeBytes(root string) (int64, error) {

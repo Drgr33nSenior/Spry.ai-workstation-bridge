@@ -86,7 +86,7 @@ the API must not use the retained internal success proof to clear its fence earl
 Startup also acquires the canonical lock for pending settlement; contention
 refuses startup. Older successful restores cannot settle later or unordered
 uncertain attempts. The lock is held through settlement.
-Original failures remain failed history. See [recovery commands](REMEDIATION.md#recovery-and-baseline-session-restoration).
+Original failures remain failed history. See [failure recovery](OPERATIONS.md#failure-recovery).
 
 Every journal replacement syncs the file, renames it and syncs the parent.
 Installer state writes now use Linux `sync -f` before and after replacement.
@@ -108,7 +108,7 @@ budgets and CPU offload. It preserves model dtype, quantization and parsers.
 It refuses physical-card selectors and global request/output limits that this
 deployment does not enforce. CPU offload uses `--cpu-offload-gb`; the pinned
 implementation converts that value to GiB. The helper budgets offload plus
-shared memory before submission. Upstream verification on 2026-09-08 resolved
+shared memory before submission. The selected SGLang contract resolves
 `v0.5.15.post1` to commit
 `0b3bb0cbe31873994c9f989fddfe2f87ca839fdd`; see its
 [server arguments](https://github.com/sgl-project/sglang/blob/0b3bb0cbe31873994c9f989fddfe2f87ca839fdd/python/sglang/srt/server_args.py)
@@ -235,11 +235,11 @@ complete process view for DRM checks. The helper has no TCP listener. Its only
 outbound network use is the explicitly configured Kubernetes identity. No K3s
 unit is a startup dependency of the API or helper.
 
-The directives were checked against upstream systemd v257
+The service definitions use systemd v257 directive semantics documented in
 [execution](https://github.com/systemd/systemd/blob/v257/man/systemd.exec.xml),
 [socket](https://github.com/systemd/systemd/blob/v257/man/systemd.socket.xml) and
 [service](https://github.com/systemd/systemd/blob/v257/man/systemd.service.xml)
-sources on 2026-09-08. The target systemd version is not discovered; review its
+sources. The target systemd version is not discovered; review its
 installed manuals before installation. On that Linux machine, first run:
 
 ```sh

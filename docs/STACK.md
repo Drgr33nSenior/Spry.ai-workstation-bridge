@@ -1,14 +1,9 @@
 # Workstation architecture views
 
 These views help the owner locate management authority, K3s components and
-workload data. They describe source configuration reviewed on **2026-09-08**,
-not discovered services or a successful workstation installation.
-
-The review used Bridge revision `46a83cbe850651c61c51a20ed5a9a03e1cd202b9` and
-installer revision `84ebd89a60766760e0e1d7195b5449a3d9acc10a`. The installer
-checkout is named `ArchLinuxThreadripperAI`; its Git repository is named
-`ArchLinuxThreadripper`. These are the source baselines before this documentation
-change, not claims that every installation uses those revisions.
+workload data. They describe source configuration, not discovered services or a
+successful workstation installation. The installer checkout is named
+`ArchLinuxThreadripperAI`; its Git repository is named `ArchLinuxThreadripper`.
 
 Boxes identify components or stores; enclosing boxes identify placement,
 authority or an explicitly labelled logical group. Solid arrows describe
@@ -145,29 +140,8 @@ and [local storage](https://github.com/k3s-io/k3s/blob/v1.35.7%2Bk3s1/manifests/
 The local-storage defaults refer to that K3s bundle, not the VM lab's separate
 local-path pin.
 
-## Documentation review scope
+## Diagram maintenance
 
-The 2026-09-08 review checked active Bridge guides against source and checked
-their local Markdown targets and anchors. It corrected initialization-only
-import guidance, recovery-ancestor retention, historical source-provenance
-wording and executable paths for installed versus source-tree commands.
-Historical agent prompts and verification logs remain historical evidence.
-
-The installer's existing `docs/STACK.md` and authoritative
-`docs/diagrams/workstation-stack.drawio` remain a **2026-09-07 installer overview**.
-Their content is consistent within that scope, but they omit Bridge, client
-harnesses and the RAG extension. The draw.io source passed XML/reference/geometry
-checks and a fresh local SVG/PNG export and visual inspection. It was not
-rewritten as a competing source for these new views.
-
-See [diagram maintenance and validation](diagrams/README.md) for the editable
-sources and rendering procedure. All three new views passed local Mermaid
-SVG/PNG rendering, SVG XML/ID/reference checks and visual inspection. The final
-SVGs contain no scripts or remote assets. Local link checks found no broken
-targets or anchors in 67 references across 15 Bridge Markdown files. Advisory
-prose audits passed for the seven changed Bridge guides and the installer stack
-guide. These checks do not replace an application test suite.
-
-No installer, service, cluster or hardware
-operation was run for this review. External historical research links were not
-exhaustively revalidated, and these diagrams do not qualify ROCm or game capture.
+See [diagram maintenance](diagrams/README.md) for editable sources and rendering.
+The diagrams contain no scripts or remote assets. They do not qualify ROCm,
+game capture, installed services or target hardware.

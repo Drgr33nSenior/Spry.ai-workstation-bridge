@@ -25,7 +25,7 @@ bin/bridgectl --context "$demo_dir/context.json" models
 bin/bridgectl --context "$demo_dir/context.json" resources
 ```
 
-Open the demo at `http://127.0.0.1:8743/`. Open the generated owner-only `owner.token` file in your local editor and enter its value in the sign-in field. Do not put the value in a URL, command argument, chat, ordinary terminal output, or inference application. The UI clears the field after exchange and uses a short-lived HttpOnly, SameSite=Strict demo session cookie. Logout revokes the browser session. The UI stores no bearer token in localStorage. Live browser sessions require a dedicated trusted HTTPS hostname and explicit `browser_sessions: true`; live HTTP loopback is CLI-only. Never use a live credential with the demo. See [browser migration](REMEDIATION.md#private-browser-migration).
+Open the demo at `http://127.0.0.1:8743/`. Open the generated owner-only `owner.token` file in your local editor and enter its value in the sign-in field. Do not put the value in a URL, command argument, chat, ordinary terminal output, or inference application. The UI clears the field after exchange and uses a short-lived HttpOnly, SameSite=Strict demo session cookie. Logout revokes the browser session. The UI stores no bearer token in localStorage. Live browser sessions require a dedicated trusted HTTPS hostname and explicit `browser_sessions: true`; live HTTP loopback is CLI-only. Never use a live credential with the demo. See [private HTTPS access](OPERATIONS.md#private-https-and-vpn-access).
 
 The `DEMO · ISOLATED FIXTURES` label must remain visible. Model staging, builds, device observations, and handovers are simulated. A successful demo operation is not target qualification.
 
@@ -197,8 +197,8 @@ If restore B also fails, recover A or B to retry the same linked chain. A succes
 C settles the chain but retains A/B as failed history. Unrelated uncertain work
 still blocks admission. Model operations use verified publication evidence, and
 builds use worker journal/cgroup evidence; neither selects GPU restoration.
-See [operation-specific recovery](REMEDIATION.md#recovery-and-baseline-session-restoration)
-for exact commands, permission repair and refusals that need owner investigation.
+See [failure recovery](OPERATIONS.md#failure-recovery) for owner recovery and
+permission-repair boundaries.
 
 ## Developer clients
 
@@ -248,6 +248,9 @@ node scripts/browser-test.mjs
 
 The browser script uses Node's standard library and an installed Chrome executable. It creates temporary credentials, a temporary browser profile, and ephemeral loopback listeners, then removes those fixtures. It does not install browser packages or use your normal profile. Set `CHROME_BIN` only if the installed executable is at another path. If absent, the script reports `NOT RUN` and exits 77.
 
-Verified on 2026-09-08 with Go 1.27.1, Node v26.8.1 and Chrome 152.0.7977.82. These identify the tested development environment; they do not install or update target software. The browser checks cover authentication, exact draft validation and preview, apply, all management pages, gaming, refresh/reconnect, process-crash recovery, a 390-pixel viewport and logout revocation. Ordinary handler tests are not reported as browser validation.
+The browser checks cover authentication, exact draft validation and preview,
+apply, management pages, gaming, refresh/reconnect, process-crash recovery, a
+narrow viewport and logout revocation. Ordinary handler tests are not browser
+validation.
 
 NOT RUN — target hardware unavailable: real GPU/model qualification, DRM handover, K3s scheduling/RBAC, contained workstation compilation and live systemd behavior. Follow the target qualification procedure before live use. Cross-built binaries and fixture successes do not establish these properties.

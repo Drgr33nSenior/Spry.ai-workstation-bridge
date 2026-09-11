@@ -279,7 +279,7 @@ not the Agents SDK or Responses API. Its documented
 [function flow](https://developers.openai.com/api/docs/guides/agents-api/tools/functions)
 supports application-handled `required_actions` and submitted tool-result events.
 Official Go examples use `openai-go/v3`; this narrow adapter uses typed standard-
-library REST instead of adding an SDK dependency. Contract checked 2026-09-11.
+library REST instead of adding an SDK dependency.
 
 Only a live administrator can enable `advisor` in server policy. It needs an
 explicit model, `api_key_file` (a provisioned owner-only systemd credential file),

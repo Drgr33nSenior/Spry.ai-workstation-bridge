@@ -124,7 +124,7 @@ is durable before parent settlement, and restart rolls forward settlement withou
 repeating effects. Local model inspection binds the original execution hash to
 receipt, manifest and publication evidence; worker inspection uses worker status.
 Neither selects GPU restoration. Source-only reconciliation never dismisses an
-uncertain external effect. See [migration and recovery](REMEDIATION.md).
+uncertain external effect. See [failure recovery](OPERATIONS.md#failure-recovery).
 
 ## Authentication and network boundary
 
@@ -158,8 +158,7 @@ or a browser checkbox.
 
 ## Dependencies and evidence
 
-Go 1.27.1 was checked against [official release metadata](https://go.dev/dl/?mode=json)
-on 2026-09-08. HTTP timeout, TLS and shutdown mechanisms follow the
+Go 1.27.1 is pinned in `.go-version`. HTTP timeout, TLS and shutdown mechanisms follow the
 [Go HTTP contract](https://pkg.go.dev/net/http). The optional telemetry integration
 uses the pinned OpenTelemetry dependencies described in [TELEMETRY.md](TELEMETRY.md).
 The memory planner bridge and narrow Agents API adapter add no runtime dependency.

@@ -7,14 +7,14 @@ The older installer draw.io overview is a different, dated view.
 
 The views use stable Mermaid flowchart primitives, generic shapes and local
 fonts. They require no remote icons, scripts, font downloads or production
-Node.js dependency. [STACK.md](../STACK.md) records scope, source baselines,
-notation, qualification gates and the evidence map.
+Node.js dependency. [STACK.md](../STACK.md) records scope, notation,
+qualification gates and the source map.
 
 ## Render with existing local tools
 
-The review environment used Mermaid CLI `11.16.0`, its standard Dagre layout
-engine and an already installed Chrome browser. These are documentation tools,
-not application runtime requirements. Do not install a renderer automatically.
+Use an already installed Mermaid CLI and Chrome-compatible browser. These are
+documentation tools, not application runtime requirements. Do not install a
+renderer automatically.
 Run from the Bridge root:
 
 ```sh
@@ -32,7 +32,7 @@ consistent. Rendering can still differ between browser or CLI versions.
 ## Validate a change
 
 1. Compare component placement and every labelled relationship with source.
-   Update the source baseline in `STACK.md` only after that comparison.
+   Update `STACK.md` only after that comparison.
 2. Run all three rendering commands. A successful Markdown or XML parse does
    not prove that Mermaid accepts the source.
 3. Open every SVG. For visual inspection as a bitmap, repeat its render command

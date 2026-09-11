@@ -1,12 +1,9 @@
 # Target-machine qualification
 
-**NOT RUN — target hardware unavailable.** This is the owner qualification path,
-not a claim about the development Mac or the expected Threadripper workstation.
-Use the exact installed adapter contract v1 and reviewed non-production target.
-The [remediation qualification and migration guide](REMEDIATION.md) adds the
-restrictive-umask and unprivileged syscall-sandbox reader tests, failed-restore-chain recovery, dedicated HTTPS
-browser boundary and authorized disposable cgroup probe. Complete those checks
-before relying on these boundaries on the target.
+This is the owner qualification path, not a claim about a development machine or
+expected workstation inventory. Use the exact installed adapter contract v1 and
+a permitted non-production target. Complete the model-reader sandbox, recovery,
+private HTTPS and delegated-cgroup checks before relying on those boundaries.
 Do not execute destructive installer/boot/firmware commands as part of these
 checks. A failed check is a refusal to proceed, not permission to bypass it.
 
@@ -108,7 +105,8 @@ a controlled stage; no partial directory may appear ready. Re-plan/verify using
 the pinned revision after resolving the interruption. Do not delete shared model
 directories or redownload into writable container layers.
 
-First run the disposable [staging sandbox qualification](REMEDIATION.md#staging-sandbox-qualification).
+First run the disposable staging-sandbox procedure in
+[Operations](OPERATIONS.md#staging-sandbox-and-delegated-cgroup-qualification).
 Its syscall filter is not the complete packaged systemd unit. On the installed
 target, confirm `UMask=0077` and `RestrictSUIDSGID=yes` remain active, the model
 root is 2750 with the approved reader GID, and a staged revision has 0750

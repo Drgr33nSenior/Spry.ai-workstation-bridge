@@ -15,8 +15,8 @@ the K3s platform and the AI, RAG and gaming workload paths.
 
 Live browser management requires explicit `browser_sessions: true` and a
 dedicated trusted HTTPS hostname. The live loopback HTTP example is CLI-only;
-demo HTTP below is separate. See the [remediation and migration guide](docs/REMEDIATION.md)
-for session invalidation, model permission repair and recovery-chain behavior.
+demo HTTP below is separate. [Operations](docs/OPERATIONS.md) covers session
+invalidation, model permission repair and recovery-chain behavior.
 
 Optional [private telemetry](docs/TELEMETRY.md) exports bounded OpenTelemetry
 metrics and traces to an owner-configured collector. Export is disabled by
@@ -99,8 +99,9 @@ make package     # Linux amd64 server/helper/worker/CLI; macOS arm64/amd64 CLI
 `make package` writes local archives and checksums under `dist/`. It neither
 installs nor publishes them. Race checks require a working local C compiler;
 release binaries use `CGO_ENABLED=0`. Cross-compilation is not runtime validation.
-Browser evidence records Chrome 152.0.7977.82 and Node 26.8.1; no npm packages,
-CDNs, external fonts or telemetry services are needed by the application.
+The browser checks use Node's standard library and a locally installed Chrome;
+no npm packages, CDNs, external fonts or telemetry services are needed by the
+application.
 
 The generated [OpenAPI 3.1.1 contract](api/openapi.json) comes from Go wire types
 and the route register in `internal/contract`. Run `make generate` after changing
@@ -131,7 +132,8 @@ packaging jobs. A failed row does not cancel the other rows' diagnostics.
 
 Only the Arch matrix row uses the official digest-pinned `base-devel` container
 on an Ubuntu amd64 runner; Ubuntu and macOS run natively. The Arch package job
-reuses that container definition. Arch packages come from the dated 2026-09-07 archive;
+reuses that container definition. Arch packages come from the archive snapshot
+pinned by the workflow;
 Go comes from the exact `.go-version` through the pinned setup action. Tests and
 package builds run as an unprivileged container user. This checks Arch userspace,
 not the Arch kernel, installed systemd services, K3s or workstation hardware.
@@ -170,11 +172,11 @@ See [Arch packaging](docs/ARCH-PACKAGING.md) for local builds and installation
 boundaries. The licence decision remains pending; this is not an AUR submission.
 
 The upload uses the SHA-pinned official
-[actions/upload-artifact v7.0.1](https://github.com/actions/upload-artifact/tree/043fb46d1a93c77aae656e7c1c64a875d1fc6a0a)
-action, verified on 2026-09-08. It runs only in CI and adds no application runtime
-dependency. `internal/integration/workflow_test.go` checks the workflow structure
-and executes the actual tag-validation script with accepted and rejected inputs.
-Full workflow syntax validation was also run with `actionlint` **1.7.12**:
+[actions/upload-artifact](https://github.com/actions/upload-artifact) action. It
+runs only in CI and adds no application runtime dependency.
+`internal/integration/workflow_test.go` checks the workflow structure and
+executes the tag-validation script with accepted and rejected inputs. Validate
+workflow syntax with the repository's pinned `actionlint` command:
 
 ```sh
 actionlint .github/workflows/check.yml .github/workflows/build.yml .github/workflows/ci.yml
@@ -207,12 +209,11 @@ address, configure private name resolution separately and retain authentication.
 There is no wildcard listener, source-IP administrator trust, TLS verification
 bypass, public ingress manifest or inference proxy.
 
-The source installer remains at
-`/Users/uk-gr9yjx0l0y/Projects/ArchLinuxThreadripperAI`. The Bridge implementation
-now resides in the attached GoLand checkout at
-`/Users/uk-gr9yjx0l0y/GolandProjects/Spry.ai-workstation-bridge`.
-Its existing Git and IDE metadata were preserved. The installer changes are limited to the session
-lock compatibility and focused tests described in the host executor guide.
+The installer is a separately maintained reference project. Its selected source,
+runtime bundle and Bridge release candidate must pass the compatibility checks
+described in [reference contracts](docs/REFERENCE-CONTRACTS.md). The installer
+change required for canonical session-lock compatibility is described in the host
+executor guide.
 
 No project licence was present. **Owner licence decision pending.** No
 distribution or commercial terms have been selected. Billing, customer tenancy,

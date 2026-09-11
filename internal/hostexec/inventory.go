@@ -194,8 +194,7 @@ func observedServingStatus(pods map[string]any, aiReplicas map[string]bool, targ
 		s.KubernetesReady = &ready
 		s.Identity = domain.Hash(map[string]any{"pod": nested(selected, "metadata", "uid"), "container": c["containerID"], "image": c["imageID"], "restart": c["restartCount"], "started": nested(c, "state", "running", "startedAt")})
 		if !ready {
-			s.State = "model-loading"
-			s.Reason = "Kubernetes readiness is false. Loading/compilation/warmup phases are not independently observed by this probe."
+			s.State, s.Reason = servingNotReadyState(c)
 		} else {
 			s.State = "healthy"
 			s.Reason = "Kubernetes Ready; representative warmth is unknown. Run the explicit non-root serving-warm-status command with fresh evidence; Bridge cannot launch that harness through its root helper."
@@ -203,6 +202,38 @@ func observedServingStatus(pods map[string]any, aiReplicas map[string]bool, targ
 		return s
 	}
 	return s
+}
+
+// servingNotReadyState maps only current, documented container-state reasons to
+// fixed operator guidance. Kubernetes messages and historical lastState values
+// are deliberately excluded: they can contain unbounded or sensitive details and
+// do not describe the current serving process.
+func servingNotReadyState(container map[string]any) (string, string) {
+	state := object(container["state"])
+	waitingState, waitingOK := state["waiting"]
+	terminatedState, terminatedOK := state["terminated"]
+	_, runningOK := state["running"]
+	waiting := str(nested(state, "waiting", "reason"))
+	terminated := str(nested(state, "terminated", "reason"))
+	switch {
+	case waiting == "CrashLoopBackOff":
+		if str(nested(object(container["lastState"]), "terminated", "reason")) == "OOMKilled" {
+			return "unavailable", "SGLang is restarting repeatedly after a memory termination. Inspect the current bounded resource and memory evidence before retrying; do not treat it as model loading."
+		}
+		return "unavailable", "SGLang is restarting repeatedly. Inspect the bounded Kubernetes status and OOM/resource evidence before retrying; do not treat it as model loading."
+	case terminated == "OOMKilled":
+		return "unavailable", "SGLang was terminated for memory use. Inspect the current bounded resource and memory evidence before retrying; do not treat it as model loading."
+	case waiting == "ImagePullBackOff" || waiting == "ErrImagePull":
+		return "unavailable", "SGLang image retrieval is unavailable. Inspect the qualified image reference and private registry access before retrying."
+	case terminatedOK && object(terminatedState) != nil:
+		return "unavailable", "SGLang current container terminated. Inspect the bounded Kubernetes status and qualified runtime before retrying."
+	case waitingOK && object(waitingState) != nil && (waiting == "ContainerCreating" || waiting == "PodInitializing"):
+		return "model-loading", "Kubernetes readiness is false. Loading, compilation and warmup phases are not independently observed by this probe."
+	case runningOK && object(state["running"]) != nil:
+		return "model-loading", "SGLang is running but Kubernetes readiness is false. Loading, compilation and warmup phases are not independently observed by this probe."
+	default:
+		return "unknown", "SGLang has no recognized current container state. Inspect the bounded Kubernetes status and retry lifecycle observation."
+	}
 }
 func podBudget(p map[string]any) (int64, int64, int64, error) {
 	if nested(p, "spec", "resources") != nil {

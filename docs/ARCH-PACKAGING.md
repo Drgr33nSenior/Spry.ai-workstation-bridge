@@ -16,10 +16,8 @@ and macOS rows use an empty container value and run on their native runners.
 Arch-only setup stays conditional in the matrix. A fresh Arch package job
 prepares its own isolated container; no filesystem state is shared between jobs.
 
-The Arch image is
-the 2026-09-07 `base-devel` build, verified against the official registry on
-2026-09-08. `scripts/ci-arch-setup.sh` selects the complete 2026-09-07 Arch Linux
-Archive snapshot. It initializes the image's package keyring, retains signature
+The Arch image and complete Arch Linux Archive snapshot are pinned by
+`scripts/ci-arch-setup.sh`. It initializes the image's package keyring, retains signature
 checks and performs a full package upgrade. Run this setup script only in a
 disposable CI Docker container; it changes that container's package database.
 Do not run it on the workstation.
@@ -90,7 +88,7 @@ The installer independently checks dependencies against its selected snapshot
 and packages its runtime/reference closure. Bridge's Go requirement is build-only.
 Do not replace the installer's frozen snapshot with the CI snapshot. Run
 `bash scripts/test-installer-contract.sh --candidate /absolute/installer/export`
-alongside the historical pinned test. The actual package's `bridge-hostd
+alongside the pinned compatibility test. The actual package's `bridge-hostd
 --check-reference PATH --check-native BUNDLE` checks catalog/native compatibility
 without starting services or authorizing executable hashes. `--manifest PATH`
 remains an offline inspection, not a policy approval.
@@ -118,9 +116,7 @@ No project licence has been selected. Do not submit this package to the AUR or
 distribute it commercially until the owner decides the terms and the recipe and
 payload include the corresponding licence metadata/text. No terms are inferred.
 
-## Primary references
-
-Verified 2026-09-08:
+## References
 
 - [Official Arch container sources](https://github.com/archlinux/archlinux-docker)
   and [Arch archive snapshot](https://archive.archlinux.org/repos/2026/09/07/).

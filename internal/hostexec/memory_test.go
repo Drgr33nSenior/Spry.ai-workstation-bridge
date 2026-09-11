@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -167,6 +168,98 @@ func TestMemoryPolicyAndArtifactRefusals(t *testing.T) {
 	}
 	if _, err := e.MemoryPreview(context.Background(), domain.Draft{Action: "memory.plan.export"}, domain.Configuration{}); err == nil {
 		t.Fatal("nil memory accepted")
+	}
+}
+
+func TestMemoryPlannerPassesOnlyVerifiedTelemetryEvidenceToInstalledRuntime(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root = filepath.Join(root, "sealed-inputs")
+	if err := os.MkdirAll(filepath.Join(root, "telemetry"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	launcher := filepath.Join(t.TempDir(), "capture-workstationctl")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	if err := os.WriteFile(launcher, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$ARGS_FILE\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		profile string
+		stack   int64
+		reserve int64
+		present bool
+	}{
+		{name: "full", profile: "full", stack: 4736, reserve: 6144, present: true},
+		{name: "metrics", profile: "metrics", stack: 2944, reserve: 4352, present: true},
+		{name: "absent", present: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			manifest := mem.Manifest{Observations: []string{"obs-01"}, Files: map[string]string{}}
+			var evidenceBytes []byte
+			if tc.present {
+				evidence := map[string]any{
+					"schema": 2, "status": "generated-not-deployed", "hardware_qualification": "NOT RUN", "enabled": true,
+					"profile": tc.profile, "gpu_exporter": false, "sglang_trace": false, "kubelet": false,
+					"node_name": "fixture", "api_address": "10.0.0.1", "workstation_address": "10.0.0.2",
+					"reserve_mib": tc.reserve, "stack_limit_mib": tc.stack,
+					"component_limits_mib": map[string]int64{"cluster_stack_mib": tc.stack, "host_alloy_mib": 512, "hardware_sampler_mib": 128},
+					"margin_mib":           768, "calculated_allowance_mib": tc.reserve, "planned_workloads": []string{"sglang"},
+					"workload_overlay": "fixture", "stack_images": []string{}, "workload_images": []string{},
+					"source_identity": map[string]any{}, "source_sha256": map[string]string{},
+				}
+				if tc.profile == "metrics" {
+					evidence["calculated_allowance_mib"] = int64(4352)
+				}
+				b, err := json.Marshal(evidence)
+				if err != nil {
+					t.Fatal(err)
+				}
+				evidenceBytes = b
+				if err = os.WriteFile(filepath.Join(root, "telemetry", "evidence.json"), b, 0600); err != nil {
+					t.Fatal(err)
+				}
+				manifest.Files["telemetry/evidence.json"] = mem.Sum(b)
+				if _, err = mem.Telemetry(root, manifest); err != nil {
+					t.Fatalf("fixture telemetry was not independently verified: %v", err)
+				}
+			}
+			args, err := memoryPlannerArgs(root, filepath.Join(root, "output"), manifest, 8192)
+			if err != nil {
+				t.Fatalf("production planner builder rejected valid %s telemetry: %v", tc.name, err)
+			}
+			want := []string{"rocm", "serving-memory-plan", filepath.Join(root, "deployment.json"), filepath.Join(root, "workload.json"), filepath.Join(root, "resource-plan.json"), filepath.Join(root, "output"), "--other-mib", "8192"}
+			if tc.present {
+				want = append(want, "--telemetry-evidence", filepath.Join(root, "telemetry", "evidence.json"))
+			}
+			want = append(want, "--observation", filepath.Join(root, "observations", "obs-01", "startup"), filepath.Join(root, "observations", "obs-01", "serving"))
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected production planner arguments:\n got: %#v\nwant: %#v", args, want)
+			}
+			if _, err := runFixed(context.Background(), launcher, args, []string{"PATH=/usr/bin:/bin", "ARGS_FILE=" + argsFile}, nil, nil, 16<<10); err != nil {
+				t.Fatalf("production command boundary did not run: %v", err)
+			}
+			b, err := os.ReadFile(argsFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(strings.Split(strings.TrimSpace(string(b)), "\n"), want) {
+				t.Fatalf("installed runtime received different arguments: %q", b)
+			}
+			if tc.present {
+				if err = os.WriteFile(filepath.Join(root, "telemetry", "evidence.json"), append(evidenceBytes, '\n'), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if _, err = memoryPlannerArgs(root, filepath.Join(root, "output"), manifest, 8192); err == nil {
+					t.Fatal("changed sealed telemetry evidence reached the planner builder")
+				}
+				if err = os.WriteFile(filepath.Join(root, "telemetry", "evidence.json"), evidenceBytes, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

@@ -1,7 +1,7 @@
 # Implementation matrix
 
-The 2026-09-11 performance additions extend existing evidence/runtime commands;
-see [PERFORMANCE.md](PERFORMANCE.md) for commands and explicit limits.
+Performance evidence and profile operations extend existing installer runtime
+commands; see [PERFORMANCE.md](PERFORMANCE.md) for commands and explicit limits.
 
 | Requirement | Existing contract | Added implementation | Source regression / target boundary |
 |---|---|---|---|
@@ -13,11 +13,6 @@ see [PERFORMANCE.md](PERFORMANCE.md) for commands and explicit limits.
 | Metrics telemetry | Full profile and collector-health monitoring | Optional metrics composition, component+margin accounting, sealed memory evidence | Both profiles/image parsers; no measured RAM saving or automatic budget transfer |
 
 
-The initial 2026-09-08 inspection had no installer HEAD; its untracked source and
-staged IDE metadata were preserved. The 2026-09-11 memory integration inspected
-Bridge `90312ed3c81a6dae5f6b84a072d67f670ac970c8` and installer
-`843a52be656699f261285d052e3e42fbac54b9e1`, both with local changes. Exact candidate
-source hashes and checks are recorded in [VERIFICATION.md](VERIFICATION.md).
 Installer paths below are repository-relative unless prefixed `Bridge:`.
 The expected workstation specification is not discovered hardware.
 
@@ -42,13 +37,12 @@ The expected workstation specification is not discovered hardware.
 | Private deployment/RBAC | Existing K3s 1.35.7+k3s1 and namespace abstractions | Outside-K3s services, local sockets, explicit HTTPS/VPN policy, narrow RBAC | Source contract/manifests and cross-builds | Admission, RBAC and systemd behavior NOT RUN on actual workstation |
 | Release packaging | No existing application build | Go1.27.1, pinned runtime/validation/security dependencies, local archives, source-only CI | `make check`, `make package`, `make browser` | Cross-builds do not qualify deployment |
 
-Remediation from review baseline `264e09e` adds restrictive-umask publication and
-verified repeat-stage repair, linked restore retries, executor-specific recovery,
-delegated-controller initialization/readback, and dedicated live HTTPS browser
-sessions with generation invalidation. Permanent regressions and the isolated
-cross-UID Linux reader check cover these boundaries; they do not qualify the
-installed workstation. See [REMEDIATION.md](REMEDIATION.md) and the current section
-of [VERIFICATION.md](VERIFICATION.md) for observed outcomes and remaining checks.
+Model publication, recovery chaining, worker cgroup setup and browser-session
+isolation have explicit safety boundaries. They do not replace target
+qualification: service-sandbox/cross-UID model access, kernel cgroup enforcement,
+systemd helper visibility, K3s admission/RBAC, target TLS, AI/gaming handover,
+ROCm/model performance, encoding, P2P/ECC, measured memory bandwidth, NVMe
+layout and workstation safety remain owner qualification work.
 
 Supported source capabilities have live implementation paths. Missing installed
 runtime hashes, reviewed source inputs, offline image input closure, dedicated
