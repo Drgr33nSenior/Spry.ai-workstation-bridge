@@ -62,7 +62,7 @@ func recoveryAdmission(ops map[string]domain.Operation, d domain.Draft, executin
 }
 
 func (e *Engine) recoveryPreflight(ctx context.Context, d domain.Draft, c domain.Configuration) (domain.Preview, error) {
-	ops := e.DB.View().Operations
+	ops := e.DB.OperationRecords()
 	old, ok := ops[d.RecoveryID]
 	if !ok || !old.RecoveryRequired {
 		return domain.Preview{}, domain.Fail("conflict", "reference must identify an unresolved recovery operation")

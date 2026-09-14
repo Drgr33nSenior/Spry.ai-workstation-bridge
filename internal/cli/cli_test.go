@@ -91,3 +91,39 @@ func TestAuditReadUsesPrivateAPIAndPreservesDenial(t *testing.T) {
 		}
 	}
 }
+
+func TestTelemetryReadUsesPrivateAPIAndPreservesUnknownAndDenial(t *testing.T) {
+	credential := filepath.Join(t.TempDir(), "credential")
+	if err := os.WriteFile(credential, []byte("synthetic-fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []int{200, 403} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "GET" || r.URL.Path != "/api/v1/telemetry/summary" || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "Bearer synthetic-fixture" {
+				t.Error("incorrect telemetry request")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			if status == 200 {
+				_, _ = w.Write([]byte(`{"values":[{"name":"psu_output_power","unit":"W","state":"missing","value":null,"reason":"no_series"}]}`))
+			} else {
+				_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"owner required"}}`))
+			}
+		}))
+		var out, stderr bytes.Buffer
+		code := Run([]string{"--endpoint", server.URL, "--credential-file", credential, "--json", "telemetry"}, &out, &stderr)
+		if status == 200 {
+			var summary domain.TelemetrySummary
+			if code != 0 || json.Unmarshal(out.Bytes(), &summary) != nil || len(summary.Values) != 1 || summary.Values[0].Value != nil || summary.Values[0].State != "missing" {
+				t.Fatalf("telemetry lost unknown state: code=%d %s", code, out.String())
+			}
+		} else if code != 3 {
+			t.Fatalf("owner denial became exit %d", code)
+		}
+		out.Reset()
+		if Run([]string{"--endpoint", server.URL, "--credential-file", credential, "telemetry", "arbitrary-query"}, &out, &stderr) != 2 {
+			t.Fatal("telemetry accepted query arguments")
+		}
+		server.Close()
+	}
+}

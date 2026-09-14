@@ -5,6 +5,7 @@ import {mkdtemp, readFile, realpath, rm, access} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
+import http from 'node:http';
 import https from 'node:https';
 import {createHash, X509Certificate} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
@@ -14,7 +15,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const chrome=process.env.CHROME_BIN||(process.platform==='darwin'?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':'/usr/bin/google-chrome');
 try{await access(chrome);}catch{console.error('NOT RUN — compatible Chrome unavailable; set CHROME_BIN to an installed browser executable.');process.exit(77);}
 const temporary=await realpath(await mkdtemp(path.join(tmpdir(),'bridge-browser-')));
-let server,browser,cdp,unrelated,secret='';
+let server,browser,cdp,unrelated,powerBackend,secret='';
 const delay=(ms)=>new Promise(resolve=>setTimeout(resolve,ms));
 const run=(binary,args)=>execFileSync(binary,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:120000});
 async function freePort(){const socket=net.createServer();await new Promise((resolve,reject)=>{socket.once('error',reject);socket.listen(0,'127.0.0.1',resolve);});const port=socket.address().port;await new Promise(resolve=>socket.close(resolve));return port;}
@@ -36,7 +37,25 @@ try{
   const certificatePEM=await readFile(certificate,'utf8');
   const privateKeyPEM=await readFile(privateKey,'utf8');
   const spki=createHash('sha256').update(new X509Certificate(certificatePEM).publicKey.export({type:'spki',format:'der'})).digest('base64');
-  const start=()=>spawn(serverBin,['--state',demo,'--listen',`127.0.0.1:${port}`,'--origin',origin,'--cert',certificate,'--key',privateKey,'--credential',credential],{stdio:'ignore'});
+  // Only the Prometheus HTTP boundary is synthetic. Browser -> authenticated
+  // API -> fixed-query adapter -> this loopback server remains the real path.
+  const powerQueries=new Map([
+    ['(workstation_psu_output_power_watts{job="node"} >= 0) and on(job,instance) (workstation_psu_available{job="node"} == 1)',240],
+    ['(workstation_psu_output_energy_joules_total{job="node"} >= 0) and on(job,instance) (workstation_psu_energy_available{job="node"} == 1)',3600000],
+    ['(workstation_psu_energy_covered_seconds_total{job="node"} >= 0) and on(job,instance) (workstation_psu_energy_available{job="node"} == 1)',3600],
+    ['workstation_psu_sample_timestamp_seconds{job="node"} and on(job,instance) (workstation_psu_available{job="node"} == 1)',null],
+    ['workstation_psu_energy_sample_timestamp_seconds{job="node"} and on(job,instance) (workstation_psu_energy_available{job="node"} == 1)',null],
+  ]);
+  const powerSeen=new Set();
+  powerBackend=http.createServer((request,response)=>{
+    const url=new URL(request.url,'http://127.0.0.1'),query=url.searchParams.get('query');
+    const now=Math.floor(Date.now()/1000),matched=powerQueries.has(query);
+    if(matched)powerSeen.add(query);
+    response.setHeader('Content-Type','application/json');
+    response.end(JSON.stringify({status:'success',data:{resultType:'vector',result:matched?[{metric:{private:'POWER_PRIVATE_SENTINEL'},value:[now,String(powerQueries.get(query)??now)]}]:[]}}));
+  });
+  const powerPort=await new Promise((resolve,reject)=>{powerBackend.once('error',reject);powerBackend.listen(0,'127.0.0.1',()=>resolve(powerBackend.address().port));});
+  const start=()=>spawn(serverBin,['--state',demo,'--listen',`127.0.0.1:${port}`,'--origin',origin,'--cert',certificate,'--key',privateKey,'--credential',credential,'--prometheus',`http://127.0.0.1:${powerPort}`],{stdio:'ignore'});
   async function serverReady(){for(let i=0;i<100;i++){try{const ready=await new Promise(resolve=>{const request=https.get({hostname:'127.0.0.1',port,servername:'bridge.test',ca:certificatePEM,headers:{Host:managementHost},timeout:200},response=>{response.resume();resolve(response.statusCode===200);});request.on('error',()=>resolve(false));request.on('timeout',()=>{request.destroy();resolve(false);});});if(ready)return;}catch{}await delay(30);}throw new Error('Fixture daemon did not become ready with its hostname-bound test certificate');}
   async function apiJSON(endpoint,credential){return await new Promise((resolve,reject)=>{const request=https.get({hostname:'127.0.0.1',port,path:endpoint,servername:'bridge.test',ca:certificatePEM,headers:{Host:managementHost,Authorization:`Bearer ${credential}`},timeout:2000},response=>{let body='';response.setEncoding('utf8');response.on('data',chunk=>body+=chunk);response.on('end',()=>{if(response.statusCode!==200)return reject(new Error(`management API status ${response.statusCode}`));try{resolve(JSON.parse(body));}catch(error){reject(error);}});});request.on('error',reject);request.on('timeout',()=>{request.destroy();reject(new Error('management API timeout'));});});}
   server=start();await serverReady();secret=(await readFile(credential,'utf8')).trim();
@@ -95,6 +114,31 @@ try{
   browserStep='memory setup';
   await navigate('resources');
   await waitFor(`!!document.getElementById('memory-form')`,'owner memory form');
+  await waitFor(`document.getElementById('power-panel').textContent.includes('240.0 W')`,'PSU reading through private API');
+  assert.equal(powerSeen.size,5,'PSU fixed queries did not reach synthetic Prometheus boundary');
+  assert.ok(await evaluate(`document.getElementById('power-panel').textContent.includes('1.000 kWh') && document.getElementById('power-panel').textContent.includes('1.00 hours') && document.getElementById('power-panel').textContent.includes('not wall-input')`),'energy units, coverage or DC/wall distinction missing');
+  assert.equal(await evaluate(`document.getElementById('power-panel').textContent.includes('POWER_PRIVATE_SENTINEL')`),false);
+  await evaluate(`document.getElementById('power-refresh').focus();document.getElementById('power-refresh').click();`);
+  await waitFor(`!state.telemetryLoading && document.getElementById('power-panel').textContent.includes('240.0 W')`,'accessible power refresh');
+  assert.equal(await evaluate(`document.activeElement.id`),'power-refresh','power refresh lost keyboard focus');
+  // Render failure/age states separately; these UI fixtures do not claim a
+  // real collector outage or a hardware power measurement.
+  await evaluate(`window.savedPowerSummary=state.telemetry;state.telemetryLoading=true;updatePower();`);
+  assert.ok(await evaluate(`document.getElementById('power-panel').getAttribute('aria-busy')==='true' && document.getElementById('power-refresh').disabled && document.getElementById('power-panel').textContent.includes('Loading power telemetry')`));
+  for(const powerState of ['missing','stale','error']){
+    await evaluate(`state.telemetryLoading=false;state.telemetry={...window.savedPowerSummary,values:window.savedPowerSummary.values.map(value=>value.name.startsWith('psu_')?{...value,state:${JSON.stringify(powerState)},reason:'<img src=x onerror="window.powerInjected=true">',value:${powerState==='stale'?'240':'null'}}:value)};updatePower();`);
+    assert.ok(await evaluate(`document.getElementById('power-panel').textContent.includes(${JSON.stringify(powerState)}) && !document.getElementById('power-panel').querySelector('img') && !window.powerInjected`));
+    assert.ok(await evaluate(`document.getElementById('power-panel').textContent.includes(${JSON.stringify(powerState==='stale'?'not a current reading':'unknown')})`),'power state implied a current or zero reading');
+  }
+  await evaluate(`window.powerRole=state.session.actor.role;window.powerFetch=window.fetch;window.powerReadCalls=0;window.fetch=(input,options)=>{if(input==='/api/v1/telemetry/summary')window.powerReadCalls++;return window.powerFetch(input,options);};`);
+  for(const role of ['viewer','operator']){
+    await evaluate(`state.session.actor.role=${JSON.stringify(role)};refresh();`);
+    await waitFor(`document.getElementById('power-panel').textContent.includes('Owner access is required')`,'power owner-only presentation');
+    assert.equal(await evaluate(`document.getElementById('power-refresh')`),null);
+  }
+  assert.equal(await evaluate(`window.powerReadCalls`),0,'non-owner UI requested private power summary');
+  await evaluate(`(async()=>{state.session.actor.role=window.powerRole;window.fetch=window.powerFetch;state.telemetry=window.savedPowerSummary;delete window.savedPowerSummary;delete window.powerFetch;delete window.powerRole;delete window.powerReadCalls;await refresh();})()`);
+  console.log('PASS browser: PSU private API queries, DC watts, estimated energy/coverage, unknown/stale/error/loading and owner-only refresh (synthetic collector, not hardware)');
   const memoryRevision=await evaluate(`state.config.revision`);
   const memoryOperations=await evaluate(`state.operations.length`);
   async function selectMemory(id){await evaluate(`document.getElementById('memory-evidence-id').value=${JSON.stringify(id)};document.getElementById('memory-evidence-sha256').value='a'.repeat(64);document.getElementById('memory-other-mib').value='0';document.getElementById('memory-evidence-id').dispatchEvent(new Event('input',{bubbles:true}));`,'select memory fixture');}
@@ -203,6 +247,41 @@ try{
   await navigate('profiles');assert.ok(await evaluate(`document.getElementById('content').textContent.includes('Current profile: gaming')`));
   console.log('PASS browser: all management pages, gaming transition and session reconnect');
 
+  // Operations auto-refresh must not repeatedly ask the cluster/status, source,
+  // evidence or private telemetry APIs for data that is unchanged on this page.
+  await navigate('operations');
+  await evaluate(`window.operationPollFetch=window.fetch;window.operationPollCalls=[];window.fetch=(input,options)=>{const url=typeof input==='string'?input:input.url;if(url?.startsWith('/api/v1/'))window.operationPollCalls.push({url,method:options?.method||input?.method||'GET'});return window.operationPollFetch(input,options);};state.operations=[];document.getElementById('content').innerHTML=renderOperations();`);
+  await waitFor(`window.operationPollCalls.length===1 && state.operations.length>0 && !!document.querySelector('#content tbody')`,'operations-only automatic poll',8000);
+  assert.deepEqual(await evaluate(`window.operationPollCalls`),[{url:'/api/v1/operations',method:'GET'}],'operations poll requested status, configuration, evidence, or telemetry');
+  await evaluate(`window.fetch=window.operationPollFetch;delete window.operationPollFetch;delete window.operationPollCalls;`);
+
+  // A completed operation can change the current profile after the immediate
+  // apply refresh. Leaving Operations therefore performs one full refresh.
+  await evaluate(`state.inventory.profile='stale-profile';`);
+  await navigate('profiles');
+  await waitFor(`state.inventory.profile==='gaming' && document.getElementById('content').textContent.includes('Current profile: gaming')`,'profile refresh after operations change');
+
+  // The automatic poll reports an API connection after a successful retry, but
+  // deliberately does not assert that the separate K3s target status is fresh.
+  await navigate('operations');
+  await evaluate(`(async()=>{state.busy=true;window.operationReconnectFetch=window.fetch;window.fetch=(input,options)=>{const url=typeof input==='string'?input:input.url;if(url==='/api/v1/operations')return Promise.reject(new TypeError('isolated operations connection failure'));return window.operationReconnectFetch(input,options);};window.operationReconnectFailure=refreshOperations().catch(()=>{});await window.operationReconnectFailure;})()`);
+  assert.equal(await evaluate(`document.getElementById('connection').textContent`),'Disconnected','operations poll failure did not mark the API disconnected');
+  await evaluate(`(async()=>{window.fetch=window.operationReconnectFetch;await refreshOperations();})()`);
+  assert.equal(await evaluate(`document.getElementById('connection').textContent`),'API connected · refresh target status','successful operations poll did not restore the bounded connection status');
+  await evaluate(`state.busy=false;delete window.operationReconnectFailure;delete window.operationReconnectFetch;`);
+
+  // A result which returns after navigation must not overwrite the newly selected
+  // page or its retained operation snapshot.
+  // Return no promise to CDP here: navigation must happen before release. The
+  // fixture's own deadline prevents a test-ordering bug from hanging Chrome.
+  await evaluate(`window.stalePollFetch=window.fetch;window.staleOperations=state.operations;window.stalePollStarted=false;window.fetch=(input,options)=>{const url=typeof input==='string'?input:input.url;if(url==='/api/v1/operations'&&!window.stalePollStarted){window.stalePollStarted=true;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Delayed operations fixture was not released')),10000);window.releaseStalePoll=()=>{clearTimeout(timer);window.stalePollFetch(input,options).then(resolve,reject);};});}return window.stalePollFetch(input,options);};void(window.stalePoll=refreshOperations());`);
+  await waitFor(`window.stalePollStarted`,'delayed operations poll');
+  await navigate('resources');await evaluate(`(async()=>{window.releaseStalePoll();await window.stalePoll;})()`);
+  assert.ok(await evaluate(`state.operations===window.staleOperations && document.getElementById('page-title').textContent==='Resource budgets' && document.getElementById('content').textContent.includes('Observed target evidence')`),'stale operations poll replaced the current page or state');
+  await evaluate(`window.fetch=window.stalePollFetch;delete window.releaseStalePoll;delete window.stalePoll;delete window.stalePollFetch;delete window.staleOperations;delete window.stalePollStarted;`);
+  console.log('PASS browser: operations-only auto polling updates the operation list without cluster/source/evidence/telemetry requests or stale-page replacement');
+  await navigate('profiles');
+
   // Kill only this isolated daemon after it durably records dispatch. This is a
   // process-crash recovery test; it does not claim a real GPU transition test.
   await evaluate(`document.querySelector('[data-action="profile.switch"][data-extra*="ai"]').click()`);
@@ -226,4 +305,4 @@ try{
   await waitFor(`fetch('/api/v1/auth/session',{credentials:'same-origin'}).then(response=>response.status===401)`,'server-side browser session expiry');
   console.log(`PASS browser: narrow viewport, logout revocation, CSRF refusal and server-side expiry (${version.product}; Node ${process.version})`);
 }catch(error){console.error(String(error.message).replaceAll(secret||'__absent_credential__','[redacted]'));process.exitCode=1;}
-finally{cdp?.ws.close();await close(unrelated);await stop(browser);await stop(server);await rm(temporary,{recursive:true,force:true});}
+finally{cdp?.ws.close();await close(unrelated);await stop(browser);await stop(server);await close(powerBackend);await rm(temporary,{recursive:true,force:true});}

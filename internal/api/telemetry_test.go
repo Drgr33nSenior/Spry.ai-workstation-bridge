@@ -66,12 +66,17 @@ func TestTelemetrySummaryOwnerPolicyAndUnavailable(t *testing.T) {
 			if json.Unmarshal(b, &v) != nil {
 				t.Fatal("summary is not typed JSON")
 			}
-			if v.Backend.State != "not_configured" || v.MetricsExport.State != "not_configured" || !v.MutationStorageAvailable || len(v.Values) != 5 || v.ObservedAt.IsZero() {
+			if v.Backend.State != "not_configured" || v.MetricsExport.State != "not_configured" || !v.MutationStorageAvailable || len(v.Values) != 8 || v.ObservedAt.IsZero() {
 				t.Fatalf("summary: %s", b)
 			}
 			for _, token := range f.tokens {
 				if strings.Contains(string(b), token) {
 					t.Fatal("credential in summary")
+				}
+			}
+			for _, value := range v.Values {
+				if strings.HasPrefix(value.Name, "psu_") && (value.State != "missing" || value.Value != nil) {
+					t.Fatal("demo without a telemetry backend invented PSU measurements")
 				}
 			}
 		}

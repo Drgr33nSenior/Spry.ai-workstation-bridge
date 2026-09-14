@@ -123,13 +123,85 @@ func Open(dir, mode string) (*Store, error) {
 	return s, nil
 }
 func (s *Store) Close() error { s.mu.Lock(); defer s.mu.Unlock(); return s.lock.Close() }
-func clone(v State) State {
+
+// clone preserves the detached-snapshot semantics of View without
+// serializing unrelated retained state while the store lock is held.
+func clone[T any](v T) T {
 	b, _ := json.Marshal(v)
-	var out State
+	var out T
 	_ = json.Unmarshal(b, &out)
 	return out
 }
 func (s *Store) View() State { s.mu.Lock(); defer s.mu.Unlock(); return clone(s.state) }
+
+// Operation returns one detached operation record. Point reads must not clone
+// retained plans, audit records, credentials, or other operation histories.
+func (s *Store) Operation(id string) (domain.Operation, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o, ok := s.state.Operations[id]
+	if !ok {
+		return domain.Operation{}, false
+	}
+	return clone(o), true
+}
+
+// OperationRecords returns detached operation records only. It retains the
+// persisted map keys so callers can safely inspect legacy records whose ID
+// field is incomplete without cloning unrelated state.
+func (s *Store) OperationRecords() map[string]domain.Operation {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]domain.Operation, len(s.state.Operations))
+	for id, o := range s.state.Operations {
+		out[id] = clone(o)
+	}
+	return out
+}
+
+// OldestQueuedOperation returns the same oldest queued record selected by the
+// engine before scoped snapshots were introduced. Equal creation times retain
+// the existing unspecified map-order tie behavior.
+func (s *Store) OldestQueuedOperation() (domain.Operation, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var next domain.Operation
+	found := false
+	for _, o := range s.state.Operations {
+		if o.State == "queued" && (!found || o.CreatedAt.Before(next.CreatedAt)) {
+			next = o
+			found = true
+		}
+	}
+	if !found {
+		return domain.Operation{}, false
+	}
+	return clone(next), true
+}
+
+// Plan returns one detached plan record.
+func (s *Store) Plan(id string) (domain.Plan, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.state.Plans[id]
+	if !ok {
+		return domain.Plan{}, false
+	}
+	return clone(p), true
+}
+
+// AuditRecords returns a detached audit slice. Audit records themselves have
+// no reference fields, so copying the bounded slice is sufficient.
+func (s *Store) AuditRecords() []Audit {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Audit == nil {
+		return nil
+	}
+	out := make([]Audit, len(s.state.Audit))
+	copy(out, s.state.Audit)
+	return out
+}
 
 // AuthState copies only the small authentication index. Unauthenticated traffic
 // must never clone retained operation/audit payloads under the writer lock.

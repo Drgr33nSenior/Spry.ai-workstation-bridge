@@ -10,7 +10,7 @@ toolchain:
 	@test "$$(go env GOVERSION)" = "go$$(tr -d '\n' < .go-version)" || { echo 'Use the exact Go version in .go-version'; exit 1; }
 
 fmt:
-	@test -z "$$(gofmt -l $$(rg --files -g '*.go'))" || { gofmt -l $$(rg --files -g '*.go'); exit 1; }
+	@/bin/sh scripts/check-format.sh
 
 vet:
 	go vet ./...

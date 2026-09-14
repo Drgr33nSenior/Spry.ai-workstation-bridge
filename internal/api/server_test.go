@@ -498,6 +498,39 @@ func TestPlanApplyIdempotencySourceDrift(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanAndAuditReadsPreserveScopedResponses(t *testing.T) {
+	f := setup(t)
+	draft := domain.Draft{Action: "serving.restart", Target: "demo-workstation", SourceRevision: f.conf.Revision}
+	status, body, _ := f.request(t, "POST", "/api/v1/plans", "owner", draft, nil)
+	if status != http.StatusCreated {
+		t.Fatalf("create plan %d %s", status, body)
+	}
+	var created domain.Plan
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatal(err)
+	}
+	status, body, _ = f.request(t, "GET", "/api/v1/plans/"+created.ID, "owner", nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("get plan %d %s", status, body)
+	}
+	var fetched domain.Plan
+	if err := json.Unmarshal(body, &fetched); err != nil || fetched.ID != created.ID || fetched.Hash != created.Hash {
+		t.Fatalf("scoped plan response changed: %+v %v", fetched, err)
+	}
+	status, body, _ = f.request(t, "GET", "/api/v1/audit", "owner", nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("audit %d %s", status, body)
+	}
+	var audit []store.Audit
+	if err := json.Unmarshal(body, &audit); err != nil || len(audit) == 0 || audit[len(audit)-1].Action != "plan.create" {
+		t.Fatalf("scoped audit response changed: %+v %v", audit, err)
+	}
+	status, _, _ = f.request(t, "GET", "/api/v1/audit", "operator", nil, nil)
+	if status != http.StatusForbidden {
+		t.Fatalf("operator audit status %d", status)
+	}
+}
 func TestRateLimit(t *testing.T) {
 	f := setup(t)
 	for i := 0; i < 13; i++ {

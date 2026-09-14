@@ -52,7 +52,7 @@ Do not add either unprivileged account to a container-engine or privileged group
 | `/usr/lib/bridge/{bridged,bridgectl,bridge-hostd,bridge-worker}` | root-owned reviewed binaries |
 | `/usr/lib/bridge/workstation-runtime` | root-owned hash-verified installed runtime |
 | `/usr/lib/bridge/workstation-reference` | root-owned reviewed reference inputs |
-| `/etc/bridge/server.json` | root-owned 0640, readable by `bridge`; contains references, no tokens |
+| `/etc/bridge/server.json` | `root:bridge`, 0640; contains references, no tokens |
 | `/etc/bridge/host-policy.json`, `/etc/workstation/session-policy.conf` | root-owned 0600; helper authorization and shared legacy lock |
 | `/etc/bridge/helper.kubeconfig` | root-owned 0600 dedicated restricted identity, inaccessible to API/worker |
 | `/var/lib/bridge` | `bridge`, 0700; API store and `managed-source.json` |
@@ -127,11 +127,12 @@ setting. Candidate trials, rollback and qualification require separate reviewed
 maintenance.
 
 The optional actual OpenAI Agents API adviser is disabled by default. Enabling it
-requires reviewed server policy, a provisioned credential-file reference and
-separate provider spending controls. Review the guide's privacy and spending
-limits first. Only selected sanitized evidence leaves the controller; no private
-artifact, Kubernetes identity or Bridge management credential is sent. Advisory
-text cannot approve or apply a plan. Deterministic planning needs no OpenAI account.
+requires reviewed server policy, a private credential file compatible with the
+running `bridge` UID, and separate provider spending controls. See
+[ADVISER.md](ADVISER.md) before enabling it. Only selected sanitized evidence
+leaves the controller; no private artifact, Kubernetes identity or Bridge
+management credential is sent. Advisory text cannot approve or apply a plan.
+Deterministic planning needs no OpenAI account.
 
 ## Private HTTPS and VPN access
 
@@ -184,11 +185,11 @@ their scale subresources. Additional ConfigMap reads establish qualification
 integrity. There is no Secret read, pod exec, arbitrary workload creation,
 cluster-admin grant or default-context selection.
 
-The named Deployment rule includes LIST because pinned
-[kubectl v0.35.7 rollout status](https://github.com/kubernetes/kubectl/blob/v0.35.7/pkg/cmd/rollout/rollout_status.go#L170-L185)
-uses a `metadata.name`-filtered List/Watch. The matching
-[API-server request parser](https://github.com/kubernetes/apiserver/blob/v0.35.7/pkg/endpoints/request/requestinfo.go#L204-L230)
-retains that exact name for authorization. Keep `resourceNames`; an unfiltered
+The named Deployment rule includes LIST because the selected, version-pinned
+`kubectl rollout status` implementation uses a `metadata.name`-filtered
+List/Watch. The matching API-server request parser retains that exact name for
+authorization. Review those sources at the version selected by the installed
+runtime when changing the Kubernetes pin. Keep `resourceNames`; an unfiltered
 list must remain denied.
 
 Provision a dedicated service-account credential or client certificate using

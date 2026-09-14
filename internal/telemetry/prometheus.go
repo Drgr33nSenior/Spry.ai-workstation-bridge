@@ -26,6 +26,12 @@ var summaryQueries = [...]struct{ name, unit, expression, freshness string }{
 	// An empty matcher selects totals, including when the label is absent.
 	{"sglang_queued_requests", "{request}", `sum(sglang:num_queue_reqs{job="sglang",priority=""})`, `min(timestamp(sglang:num_queue_reqs{job="sglang",priority=""}))`},
 	{"sglang_time_to_first_token_p95", "s", `histogram_quantile(0.95,sum by(le)(rate(sglang:time_to_first_token_seconds_bucket{job="sglang"}[5m])))`, `min(timestamp(sglang:time_to_first_token_seconds_count{job="sglang"}))`},
+	// Do not aggregate PSU series: multiple matching nodes are ambiguous. A
+	// newly scraped, frozen textfile is not a fresh sensor observation, so use
+	// the collector's timestamp value rather than Prometheus's scrape timestamp.
+	{"psu_output_power", "W", `(workstation_psu_output_power_watts{job="node"} >= 0) and on(job,instance) (workstation_psu_available{job="node"} == 1)`, `workstation_psu_sample_timestamp_seconds{job="node"} and on(job,instance) (workstation_psu_available{job="node"} == 1)`},
+	{"psu_output_energy_estimated", "J", `(workstation_psu_output_energy_joules_total{job="node"} >= 0) and on(job,instance) (workstation_psu_energy_available{job="node"} == 1)`, `workstation_psu_energy_sample_timestamp_seconds{job="node"} and on(job,instance) (workstation_psu_energy_available{job="node"} == 1)`},
+	{"psu_energy_covered", "s", `(workstation_psu_energy_covered_seconds_total{job="node"} >= 0) and on(job,instance) (workstation_psu_energy_available{job="node"} == 1)`, `workstation_psu_energy_sample_timestamp_seconds{job="node"} and on(job,instance) (workstation_psu_energy_available{job="node"} == 1)`},
 }
 
 type Prometheus struct {

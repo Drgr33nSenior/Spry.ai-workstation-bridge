@@ -44,6 +44,7 @@ func run() error {
 	certPath := flag.String("cert", "", "ephemeral test certificate")
 	keyPath := flag.String("key", "", "ephemeral test key")
 	credentialPath := flag.String("credential", "", "owner-only test credential output")
+	prometheusURL := flag.String("prometheus", "", "optional loopback-only synthetic Prometheus fixture")
 	flag.Parse()
 	if flag.NArg() != 0 || *stateDir == "" || *listen == "" || *origin == "" || *certPath == "" || *keyPath == "" || *credentialPath == "" {
 		return errors.New("state, listen, origin, cert, key and credential are required")
@@ -54,6 +55,12 @@ func run() error {
 	}
 	if host, _, err := net.SplitHostPort(*listen); err != nil || !net.ParseIP(host).IsLoopback() {
 		return errors.New("fixture must bind an explicit loopback IP and port")
+	}
+	if *prometheusURL != "" {
+		backend, err := url.Parse(*prometheusURL)
+		if err != nil || config.ValidateTelemetryEndpoint(*prometheusURL) != nil || !net.ParseIP(backend.Hostname()).IsLoopback() {
+			return errors.New("synthetic Prometheus fixture must use a loopback endpoint")
+		}
 	}
 	if err := os.MkdirAll(*stateDir, 0700); err != nil {
 		return err
@@ -97,6 +104,7 @@ func run() error {
 	}
 	defer eng.Close(context.Background())
 	c := config.Config{Mode: "live", BrowserSessions: true, Target: "demo-workstation", AllowedHosts: []string{u.Host}, ExternalURL: *origin}
+	c.Telemetry.PrometheusURL = *prometheusURL
 	pair, err := tls.LoadX509KeyPair(*certPath, *keyPath)
 	if err != nil {
 		return err

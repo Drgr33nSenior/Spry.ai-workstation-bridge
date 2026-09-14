@@ -45,6 +45,21 @@ jobs:
       - name: Prepare isolated Arch userspace
         if: ${{ matrix.platform == 'arch' }}
         run: bash scripts/ci-arch-setup.sh
+      - name: Prepare native source tools
+        if: ${{ matrix.platform != 'arch' }}
+        env:
+          BRIDGE_CHECK_PLATFORM: ${{ matrix.platform }}
+        run: |
+          case "$BRIDGE_CHECK_PLATFORM" in
+            ubuntu)
+              sudo apt-get update
+              sudo apt-get install --no-install-recommends -y ripgrep
+              ;;
+            macos)
+              brew list --versions ripgrep >/dev/null || brew install ripgrep
+              ;;
+            *) echo 'Unsupported native check platform' >&2; exit 1 ;;
+          esac
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: .go-version

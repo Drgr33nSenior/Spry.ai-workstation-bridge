@@ -114,7 +114,7 @@ is provided. The additive wire contract is generated in
 
 The response contains `observed_at`, adapter `mode`, local mutation-storage
 availability, counts of queued/running/recovery-required operations, export
-states, backend state and five named measurements. It returns HTTP 200 with
+states, backend state and eight named measurements. It returns HTTP 200 with
 explicit unavailable/error states when Prometheus fails. It never returns raw
 operation records, audit entries, configuration, backend URLs or backend labels.
 Operation counts and storage health use a small snapshot under the store lock;
@@ -126,6 +126,9 @@ summary requests do not copy or sort retained operation events.
 | `host_memory_pressure_waiting` | Five-minute rate of `node_pressure_memory_waiting_seconds_total{job="node"}`, as a ratio |
 | `sglang_queued_requests` | Sum of `sglang:num_queue_reqs{job="sglang",priority=""}` |
 | `sglang_time_to_first_token_p95` | 95th percentile from five-minute rates of `sglang:time_to_first_token_seconds_bucket{job="sglang"}`, in seconds |
+| `psu_output_power` | One available `workstation_psu_output_power_watts{job="node"}` series, in DC output watts |
+| `psu_output_energy_estimated` | One available `workstation_psu_output_energy_joules_total{job="node"}` series, in estimated DC output joules |
+| `psu_energy_covered` | One available `workstation_psu_energy_covered_seconds_total{job="node"}` series, in covered observation seconds |
 | `gpu_telemetry` | Explicitly unavailable until target GPU metrics are qualified |
 
 Use a Prometheus backend dedicated to this workstation. The fixed `node` and
@@ -136,8 +139,14 @@ breakdowns; it also matches when priority scheduling adds no label. SGLang
 metrics must be explicitly enabled and scraped under that job.
 No GPU metric names or Radeon exporter support are assumed.
 
-Each refresh makes at most eight fixed instant queries: four aggregates and
-their oldest source timestamps. TTFT freshness uses the histogram count source.
+Each refresh makes at most 14 fixed instant queries: seven values and their
+source timestamps. TTFT freshness uses the histogram count source. PSU queries
+do not sum targets: duplicate matching series are ambiguous and remain missing.
+The fixed selectors require the collector's corresponding availability gauge
+to equal one, matched on `job,instance`. PSU freshness uses the value of
+`workstation_psu_sample_timestamp_seconds` or
+`workstation_psu_energy_sample_timestamp_seconds`, not its scrape timestamp.
+A repeatedly scraped, frozen textfile therefore becomes stale.
 All queries share a two-second deadline and each requests a one-second backend
 timeout. Responses must contain one finite aggregate; empty/NaN series are
 `missing`, not zero. A missing timestamp leaves the value missing; timestamp
@@ -151,6 +160,40 @@ State fields distinguish `not_configured`, `pending`, `available`, `unavailable`
 code; `value` and `observed_at` can be null. An available backend means its fixed
 queries completed, not that every measurement exists. Read each measurement's
 state and source timestamp before using its value.
+
+## PSU power and energy
+
+The Resources page includes an owner-only **PSU power and energy** panel. Use
+**Refresh power telemetry** to fetch the same bounded summary used by the CLI:
+
+```sh
+bridgectl --context /path/to/owner-context.json --json telemetry
+```
+
+The installer sampler reads the Linux `corsair-psu` hwmon driver through the
+existing private telemetry stack. Both `full` and `metrics` profiles carry these
+metrics. Bridge does not access USB, change PSU controls, load kernel modules or
+configure the collector. The exact PSU revision, USB connection, kernel support
+and unprivileged sensor access require the installer's
+[PSU qualification procedure](https://github.com/Drgr33nSenior/ArchLinuxThreadripper/blob/main/docs/TELEMETRY.md).
+Absent sensors and unconfigured telemetry remain unknown; Demo does not invent
+PSU readings.
+
+Power is PSU **DC output**, not AC wall-input power. The panel converts the
+sampler's cumulative estimated joules to kWh and shows the covered observation
+time beside it. These totals start with the sampler's retained accounting state.
+They integrate observed intervals only, without extrapolating through missing
+samples, reboots or identity changes. Covered time is not workstation uptime.
+Keep the accounting state when upgrading; the installer runbook defines its
+backup and recovery boundary.
+
+Use the private Grafana dashboard for power history. Read coverage and
+freshness with every total. Retained counters do
+not reconstruct missing history, and a stale value is only the last observation.
+This is not a wall-power meter or electricity-billing record. PSU conversion
+losses, displays and other wall-powered equipment are excluded. Use a separately
+qualified AC energy meter for wall consumption or cost measurements. No hardware
+accuracy or workload performance claim follows from the UI or source fixtures.
 
 ## Dependency and verification boundary
 

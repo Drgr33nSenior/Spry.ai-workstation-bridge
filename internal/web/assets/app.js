@@ -1,6 +1,6 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
-const state = {session:null, inventory:null, config:null, operations:[], plan:null, applyKey:null, page:'serving', busy:false, memory:[], memoryError:'', memorySelection:null, memoryPreview:null, memoryPreviewError:'', memoryAdvice:null, performanceSelection:null, performancePreview:null, performancePreviewError:''};
+const state = {session:null, inventory:null, config:null, operations:[], plan:null, applyKey:null, page:'serving', pageEpoch:0, busy:false, inventoryRefreshNeeded:false, inventoryRefreshPending:false, telemetry:null, telemetryError:'', telemetryLoading:false, memory:[], memoryError:'', memorySelection:null, memoryPreview:null, memoryPreviewError:'', memoryAdvice:null, performanceSelection:null, performancePreview:null, performancePreviewError:''};
 const pages = {serving:'Models & serving',resources:'Resource budgets',performance:'Performance evidence',profiles:'Operating profiles',builds:'Build jobs',caches:'Persistent assets',harnesses:'Developer clients',operations:'Operations & recovery'};
 const terminal = new Set(['succeeded','failed','cancelled','recovery-required']);
 const escape = (v) => String(v ?? 'unknown').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -22,15 +22,18 @@ async function api(path,method='GET',body=null,key=null,revision=null) {
   if(!response.ok){const failure=result.error||result;const error=new Error(failure.message||'Request refused');error.code=failure.code;error.status=response.status;if(response.status===401 && path!=='auth/login')showLogin();throw error;}
   return result;
 }
-function showLogin(){state.session=null;state.memory=[];state.memorySelection=null;state.memoryPreview=null;state.memoryAdvice=null;state.performanceSelection=null;state.performancePreview=null;$('login').hidden=false;$('management').hidden=true;$('logout').hidden=true;$('identity').textContent='';}
+function showLogin(){state.session=null;state.inventoryRefreshNeeded=false;state.inventoryRefreshPending=false;state.telemetry=null;state.telemetryError='';state.telemetryLoading=false;state.memory=[];state.memorySelection=null;state.memoryPreview=null;state.memoryAdvice=null;state.performanceSelection=null;state.performancePreview=null;$('login').hidden=false;$('management').hidden=true;$('logout').hidden=true;$('identity').textContent='';}
 function showManagement(session){state.session=session;$('login').hidden=true;$('management').hidden=false;$('logout').hidden=false;const actor=session.actor;$('identity').textContent=typeof actor==='string'?actor:((actor?.name||actor?.id||'')+' · '+(actor?.role||''));}
 async function refresh(render=true){
   $('connection').textContent='Refreshing…';
   try{
     const memory=memoryOwner()?api('memory').then(data=>({data,error:''})).catch(error=>({data:[],error:errorMessage(error)})):Promise.resolve({data:[],error:''});
-    const [inventory,config,operations,evidence]=await Promise.all([api('status'),api('config'),api('operations'),memory]);
-    state.inventory=inventory;state.config=config;state.operations=operations;
+    const session=state.session;
+    const telemetry=memoryOwner()?api('telemetry/summary').then(data=>({data,error:''})).catch(error=>({data:null,error:errorMessage(error)})):Promise.resolve({data:null,error:''});
+    const [inventory,config,operations,evidence,power]=await Promise.all([api('status'),api('config'),api('operations'),memory,telemetry]);
+    state.inventory=inventory;state.config=config;state.operations=operations;state.inventoryRefreshNeeded=false;
     state.memory=evidence.data;state.memoryError=evidence.error;
+    if(state.session===session){state.telemetry=power.data;state.telemetryError=power.error;}
     $('mode').textContent=inventory.mode==='demo'?'DEMO · ISOLATED FIXTURES':`${inventory.environment} · ${inventory.target}`;
     $('mode').className=inventory.mode==='demo'?'demo':'';
     $('connection').textContent=inventory.cluster_available?'Connected':'K3s unavailable';
@@ -42,8 +45,29 @@ function field(name,label,value,type='number',hint='') {return `<div><label for=
 function action(label,action,extra={}){return `<button type="button" data-action="${escape(action)}" data-extra="${escape(JSON.stringify(extra))}">${escape(label)}</button>`;}
 function modelOptions(){return state.inventory.models.map(m=>`<option value="${escape(m.id)}" ${m.id===state.config.serving.model?'selected':''}>${escape(m.id)} · ${escape(m.quantization)}</option>`).join('');}
 function renderServing(){const s=state.config.serving;return `<section class="panel"><h2>Serving configuration</h2><p class="muted">Preview source changes and live effects before applying. The server validates the pinned engine and qualification gates.</p><form id="serving-form"><div class="form-grid"><div><label for="model">Reviewed model</label><select id="model" name="model">${modelOptions()}</select></div>${field('context','Context tokens',s.context)}${field('concurrency','Concurrent requests',s.concurrency)}${field('memory_fraction','GPU memory fraction',s.memory_fraction)}${field('cpu_offload_gib','CPU offload (GiB)',s.cpu_offload_gib)}${field('gpu_count','Device-plugin GPU count',state.config.resources.gpu_count)}${field('max_request_tokens','Global input cap',s.max_request_tokens,'number','Zero = not enforced. The pinned deployment refuses unsupported global caps.')}${field('max_output_tokens','Global output cap',s.max_output_tokens,'number','Client request limits are exported separately.')}</div><div class="actions"><button type="submit">Preview serving changes</button></div></form><div class="actions">${action('Plan start','serving.start')}${action('Plan graceful stop','serving.stop')}${action('Plan restart','serving.restart')}</div></section><h2>Selected model assets</h2><div class="cards">${state.inventory.models.map(m=>`<article class="card"><h3>${escape(m.id)}</h3><span class="pill">${escape(m.status)}</span><dl><dt>Quantization</dt><dd>${escape(m.quantization)}</dd><dt>Size</dt><dd>${gib(m.size)}</dd><dt>Licence</dt><dd>${escape(m.license||'unknown')}</dd><dt>Qualification</dt><dd>${escape(m.qualification||'unknown')}</dd><dt>Revision</dt><dd><code>${escape(m.revision)}</code></dd></dl><div class="actions">${action('Plan staging','model.stage',{model:m.id})}${action('Plan verification','model.verify',{model:m.id})}</div>${detail('Files and integrity evidence',m.files)}</article>`).join('')}</div>`;}
-function renderResources(){const h=state.inventory.hardware,r=state.config.resources;return `<section class="panel"><h2>Observed target evidence</h2><span class="pill">${escape(h.status)}</span><dl><dt>Observation</dt><dd>${escape(h.observed_at)} · boot <code>${escape(h.boot_id)}</code></dd><dt>Memory</dt><dd>${memoryMiB(h.memory_mib)} · ${escape(h.dimms)} DIMMs · trained ${escape(h.trained_speed)} · channels ${escape(h.channels)}</dd><dt>CPU</dt><dd>${escape(h.cpu_threads)} threads · SMT width ${escape(h.smt_width)} · topology ${h.topology_known?'known':'unknown'}</dd><dt>Memory reserves</dt><dd>Host ${escape(h.host_reserve_mib)} + K3s ${escape(h.kube_reserve_mib)} + other workloads ${escape(h.other_memory_mib)} MiB</dd><dt>CPU policy</dt><dd>${escape(h.cpu_manager_policy)} · full-pcpus-only ${escape(h.full_pcpus_only)}</dd></dl><p class="warning">Two GPUs have separate memory. Device-plugin counts do not choose a physical card. DIMM count does not establish memory bandwidth.</p>${(h.warnings||[]).map(w=>`<p class="warning">${escape(w)}</p>`).join('')}<div class="actions">${action('Plan evidence refresh','hardware.refresh')}${action('Export CPU maintenance plan','cpu-policy.export')}</div>${detail('Complete hardware observation',h)}</section><div class="cards">${(h.gpus||[]).map(g=>`<div class="card"><h3>${escape(g.model)}</h3><p><code>${escape(g.id)}</code></p><p>${escape(g.render_path)} · ${memoryMiB(g.memory_mib)}</p></div>`).join('')||'<p>No GPU observations available.</p>'}</div><section class="panel"><h2>Workload budget</h2><form id="resources-form"><div class="form-grid">${field('cpu','CPU threads',r.cpu)}${field('memory_mib','RAM request and limit (MiB)',r.memory_mib)}${field('shared_memory_mib','Shared-memory ceiling (MiB)',r.shared_memory_mib,'number','Shared memory is included inside the RAM limit.')}${field('gpu_count','Device-plugin GPU count',r.gpu_count)}</div><div class="actions"><button type="submit">Preview resource changes</button></div></form><p class="muted">Requests and limits stay equal for Guaranteed QoS. Whole-core validation uses observed SMT topology. Host CPU policy changes require a separate reviewed maintenance procedure.</p></section>${renderMemory()}`;}
+function renderResources(){const h=state.inventory.hardware,r=state.config.resources;return `<section class="panel"><h2>Observed target evidence</h2><span class="pill">${escape(h.status)}</span><dl><dt>Observation</dt><dd>${escape(h.observed_at)} · boot <code>${escape(h.boot_id)}</code></dd><dt>Memory</dt><dd>${memoryMiB(h.memory_mib)} · ${escape(h.dimms)} DIMMs · trained ${escape(h.trained_speed)} · channels ${escape(h.channels)}</dd><dt>CPU</dt><dd>${escape(h.cpu_threads)} threads · SMT width ${escape(h.smt_width)} · topology ${h.topology_known?'known':'unknown'}</dd><dt>Memory reserves</dt><dd>Host ${escape(h.host_reserve_mib)} + K3s ${escape(h.kube_reserve_mib)} + other workloads ${escape(h.other_memory_mib)} MiB</dd><dt>CPU policy</dt><dd>${escape(h.cpu_manager_policy)} · full-pcpus-only ${escape(h.full_pcpus_only)}</dd></dl><p class="warning">Two GPUs have separate memory. Device-plugin counts do not choose a physical card. DIMM count does not establish memory bandwidth.</p>${(h.warnings||[]).map(w=>`<p class="warning">${escape(w)}</p>`).join('')}<div class="actions">${action('Plan evidence refresh','hardware.refresh')}${action('Export CPU maintenance plan','cpu-policy.export')}</div>${detail('Complete hardware observation',h)}</section><div class="cards">${(h.gpus||[]).map(g=>`<div class="card"><h3>${escape(g.model)}</h3><p><code>${escape(g.id)}</code></p><p>${escape(g.render_path)} · ${memoryMiB(g.memory_mib)}</p></div>`).join('')||'<p>No GPU observations available.</p>'}</div><section class="panel"><h2>Workload budget</h2><form id="resources-form"><div class="form-grid">${field('cpu','CPU threads',r.cpu)}${field('memory_mib','RAM request and limit (MiB)',r.memory_mib)}${field('shared_memory_mib','Shared-memory ceiling (MiB)',r.shared_memory_mib,'number','Shared memory is included inside the RAM limit.')}${field('gpu_count','Device-plugin GPU count',r.gpu_count)}</div><div class="actions"><button type="submit">Preview resource changes</button></div></form><p class="muted">Requests and limits stay equal for Guaranteed QoS. Whole-core validation uses observed SMT topology. Host CPU policy changes require a separate reviewed maintenance procedure.</p></section>${renderPower()}${renderMemory()}`;}
 function memoryOwner(){return state.session?.actor?.role==='owner';}
+function powerValue(name,unit,label,format){
+  const value=state.telemetry?.values?.find(value=>value.name===name);
+  const known=value?.unit===unit&&Number.isFinite(value.value)&&value.value>=0&&['available','stale'].includes(value.state);
+  const status=value?.state||'unknown';
+  return `<article class="card"><h3>${escape(label)}</h3><p>${known?escape(format(value.value)):'unknown'} <span class="pill">${escape(status)}</span></p><p>${escape(value?.reason||'No telemetry observation is available.')}</p>${value?.observed_at?`<p class="muted">Sensor observation: ${escape(value.observed_at)}</p>`:''}${status==='stale'?'<p class="warning">Last observation only; this is not a current reading.</p>':''}</article>`;
+}
+function renderPower(){
+  if(!memoryOwner())return '<section class="panel" id="power-panel"><h2>PSU power and energy</h2><p>Owner access is required to read private power telemetry.</p></section>';
+  return `<section class="panel" id="power-panel" aria-labelledby="power-title" aria-busy="${state.telemetryLoading}"><h2 id="power-title">PSU power and energy</h2><p class="warning">PSU DC output, not wall-input power or electricity billing. Estimated energy covers observed intervals only; gaps and reboots are not extrapolated.</p><p role="status">${state.telemetryLoading?'Loading power telemetry…':`Backend: ${escape(state.telemetry?.backend?.state||'unknown')}`}</p>${state.telemetryError?`<p class="error">${escape(state.telemetryError)}</p>`:''}<div class="cards">${powerValue('psu_output_power','W','DC output power',value=>value.toFixed(1)+' W')}${powerValue('psu_output_energy_estimated','J','Tracked estimated DC energy',value=>(value/3600000).toFixed(3)+' kWh')}${powerValue('psu_energy_covered','s','Covered observation time',value=>(value/3600).toFixed(2)+' hours')}</div><p class="muted">Totals are cumulative since the sampler's retained accounting state began. Use the private Grafana dashboard for power history. Missing readings are unknown, not zero. Sensor availability does not establish accuracy or hardware qualification.</p><button type="button" id="power-refresh" ${state.telemetryLoading?'disabled':''}>Refresh power telemetry</button></section>`;
+}
+function bindPower(){
+  $('power-refresh')?.addEventListener('click',async()=>{
+    if(!memoryOwner()||state.telemetryLoading)return;
+    const session=state.session,restoreFocus=document.activeElement?.id==='power-refresh';
+    state.telemetryLoading=true;state.telemetryError='';updatePower();
+    try{const result=await api('telemetry/summary');if(state.session===session)state.telemetry=result;}
+    catch(error){if(state.session===session){state.telemetry=null;state.telemetryError=errorMessage(error);}}
+    finally{if(state.session===session){state.telemetryLoading=false;updatePower(restoreFocus);}}
+  });
+}
+function updatePower(focus=false){if($('power-panel')){$('power-panel').outerHTML=renderPower();bindPower();if(focus)$('power-refresh')?.focus();}}
 function memoryAction(action){return action==='memory.evidence.import'||action==='memory.plan.export';}
 function memoryExportReady(){return ['ready-for-plan','plan-only-unqualified'].includes(state.memoryPreview?.status);}
 function privateMemoryArtifact(name){return ['plan.json','patch.json','rollback.json'].includes(name);}
@@ -154,10 +178,19 @@ function operationTable(ops) {
     ${performanceAction(o.plan.draft.action)?(o.artifacts||[]).map((a,i)=>!a.content?`<div class="actions"><button data-artifact="${escape(o.id)}" data-index="${i}">Download ${escape(a.name)}</button></div>`:'').join(''):''}</td>
     </tr>`).join('')}</tbody></table></div>`;
 }
+function operationsChanged(next){
+  const previous=state.operations,fields=['id','revision','state','dispatched','recovery_required','source_updated','live_applied'];
+  return previous.length!==next.length||next.some((operation,index)=>fields.some(field=>operation[field]!==previous[index]?.[field]));
+}
 function renderOperations(){return `<p class="muted">Disconnecting or refreshing does not cancel work. Cancellation is a request; wait for a durable terminal outcome. Uncertain external effects stay recovery-required.</p>${operationTable(state.operations)}`;}
-function renderPage(){if(!state.inventory)return;state.page=location.hash.slice(1);if(!pages[state.page])state.page='serving';$('page-title').textContent=pages[state.page];for(const a of document.querySelectorAll('[data-page]')){if(a.dataset.page===state.page)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}const renderers={serving:renderServing,resources:renderResources,performance:renderPerformance,profiles:renderProfiles,builds:renderBuilds,caches:renderCaches,harnesses:renderHarnesses,operations:renderOperations};$('content').innerHTML=renderers[state.page]();bindForms();}
+function refreshInventoryAfterOperations(){
+  if(!state.session||!state.inventoryRefreshNeeded||state.inventoryRefreshPending)return;
+  state.inventoryRefreshPending=true;refresh().catch(()=>{}).finally(()=>{state.inventoryRefreshPending=false;});
+}
+function renderPage(){if(!state.inventory)return;const previousPage=state.page;state.page=location.hash.slice(1);if(!pages[state.page])state.page='serving';state.pageEpoch++;$('page-title').textContent=pages[state.page];for(const a of document.querySelectorAll('[data-page]')){if(a.dataset.page===state.page)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}const renderers={serving:renderServing,resources:renderResources,performance:renderPerformance,profiles:renderProfiles,builds:renderBuilds,caches:renderCaches,harnesses:renderHarnesses,operations:renderOperations};$('content').innerHTML=renderers[state.page]();bindForms();if(previousPage==='operations'&&state.page!=='operations')refreshInventoryAfterOperations();}
 function formNumbers(form){return Object.fromEntries([...new FormData(form)].map(([k,v])=>[k,Number(v)]));}
 function bindForms(){
+  bindPower();
   $('serving-form')?.addEventListener('submit',event=>{event.preventDefault();const f=event.currentTarget,values=formNumbers(f);delete values.model;const gpu=values.gpu_count;delete values.gpu_count;submitPlan('serving.configure',{serving:{...values,model:new FormData(f).get('model')},resources:{...state.config.resources,gpu_count:gpu}});});
   $('resources-form')?.addEventListener('submit',event=>{event.preventDefault();submitPlan('resources.configure',{resources:formNumbers(event.currentTarget)});});
   $('caches-form')?.addEventListener('submit',event=>{event.preventDefault();submitPlan('caches.configure',{caches:formNumbers(event.currentTarget)});});
@@ -225,5 +258,17 @@ function download(content,name,type){
 }
 window.addEventListener('hashchange',renderPage);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden && state.session)refresh().catch(()=>{});});
-setInterval(()=>{if(state.session && !document.hidden && state.page==='operations' && !state.busy && !$('plan-dialog').open){state.busy=true;refresh().catch(()=>{}).finally(()=>{state.busy=false;});}},3000);
+async function refreshOperations(){
+  const session=state.session,pageEpoch=state.pageEpoch;
+  try{
+    const operations=await api('operations');
+    if(state.session!==session||state.page!=='operations'||state.pageEpoch!==pageEpoch||document.hidden||$('plan-dialog').open)return;
+    if(operationsChanged(operations))state.inventoryRefreshNeeded=true;
+    state.operations=operations;$('content').innerHTML=renderOperations();$('connection').textContent='API connected · refresh target status';
+  }catch(error){
+    if(state.session===session&&state.page==='operations'&&state.pageEpoch===pageEpoch){$('connection').textContent='Disconnected';notice(errorMessage(error),true);}
+    throw error;
+  }
+}
+setInterval(()=>{if(state.session && !document.hidden && state.page==='operations' && !state.busy && !$('plan-dialog').open){state.busy=true;refreshOperations().catch(()=>{}).finally(()=>{state.busy=false;});}},3000);
 (async()=>{try{showManagement(await api('auth/session'));await refresh();}catch(error){showLogin();if(error.status!==401)notice(errorMessage(error),true);}})();

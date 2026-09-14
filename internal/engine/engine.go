@@ -40,7 +40,7 @@ func New(db *store.Store, src *source.Source, adapter domain.Adapter, target str
 func (e *Engine) Start() error {
 	// Queued intent has no external effect and is safe to revalidate. Anything
 	// dispatched is inspected, never resent. A lost response is not a retry.
-	for id, o := range e.DB.View().Operations {
+	for id, o := range e.DB.OperationRecords() {
 		if !domain.Terminal(o.State) && o.State != "queued" {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			r, err := e.inspect(ctx, o)
@@ -251,15 +251,16 @@ func (e *Engine) Apply(a auth.Actor, planID, target, key string) (domain.Operati
 	return op, err
 }
 func (e *Engine) Operations() []domain.Operation {
-	items := []domain.Operation{}
-	for _, o := range e.DB.View().Operations {
+	records := e.DB.OperationRecords()
+	items := make([]domain.Operation, 0, len(records))
+	for _, o := range records {
 		items = append(items, o)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
 	return items
 }
 func (e *Engine) Operation(id string) (domain.Operation, error) {
-	o, ok := e.DB.View().Operations[id]
+	o, ok := e.DB.Operation(id)
 	if !ok {
 		return o, domain.Fail("not_found", "operation not found")
 	}
@@ -331,7 +332,7 @@ func (e *Engine) Recover(ctx context.Context, a auth.Actor, id string) (domain.P
 		return domain.Plan{}, err
 	}
 	d := domain.Draft{Action: "operation.reconcile", Target: e.Target, SourceRevision: c.Revision, RecoveryID: id}
-	ops := e.DB.View().Operations
+	ops := e.DB.OperationRecords()
 	chain, chainErr := domain.RecoveryChain(operationLinks(ops), id)
 	if chainErr != nil {
 		return domain.Plan{}, domain.Fail("recovery_required", chainErr.Error())
@@ -359,17 +360,11 @@ func (e *Engine) loop() {
 			if !e.DB.Healthy() {
 				break
 			}
-			var next *domain.Operation
-			for _, o := range e.DB.View().Operations {
-				if o.State == "queued" && (next == nil || o.CreatedAt.Before(next.CreatedAt)) {
-					copy := o
-					next = &copy
-				}
-			}
-			if next == nil {
+			next, ok := e.DB.OldestQueuedOperation()
+			if !ok {
 				break
 			}
-			e.execute(*next)
+			e.execute(next)
 		}
 	}
 }
@@ -544,7 +539,7 @@ func (e *Engine) finish(id string, r domain.Result) error {
 		o.UpdatedAt = time.Now().UTC()
 		o.Revision++
 		a := o.Plan.Draft.Action
-		o.LiveApplied = r.State == "succeeded" && (a == "serving.configure" || a == "resources.configure" || a == "serving.start" || a == "serving.stop" || a == "serving.restart" || a == "profile.switch" || a == "profile.restore")
+		o.LiveApplied = r.State == "succeeded" && domain.HostRestoreRequired(a)
 		s.Operations[id] = o
 		store.Event(s, o.Actor, "operation.complete", id, o.State)
 		if o.State == "succeeded" && o.Plan.Draft.RecoveryID != "" {

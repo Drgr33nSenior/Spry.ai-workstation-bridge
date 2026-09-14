@@ -26,9 +26,9 @@ measurements without exposing arbitrary queries, credentials or raw audit data.
 The owner-only [memory-budget workflow](docs/MEMORY-BUDGETS.md) imports sealed
 evidence collected by the non-root workstation owner and exports unqualified
 SGLang memory candidates. Private artifacts stay separate from sanitized views.
-An optional OpenAI Agents API adviser is disabled by default; it can explain
-selected evidence and request a plan, but cannot approve or apply one. Neither
-workflow automatically changes running memory limits or grants qualification.
+The optional [Agents API adviser](docs/ADVISER.md) can explain selected evidence
+and request a plan, but cannot approve or apply one. Neither workflow
+automatically changes running memory limits or grants qualification.
 
 The [performance workflow](docs/PERFORMANCE.md) adds owner-reviewed comparison,
 selection, loading/queue and cache-plan exports through the CLI and Performance
@@ -40,8 +40,8 @@ explicitly unavailable through the current execution/client boundaries.
 ## Run the demo
 
 Use Go **1.27.1**, as recorded in `.go-version`. No production Node.js runtime,
-SQLite driver or CGO is required. The module identity comes from the existing
-repository remote: `github.com/Drgr33nSenior/Spry.ai-workstation-bridge`.
+SQLite driver or CGO is required. The module identity is declared by
+[`go.mod`](go.mod): `github.com/Drgr33nSenior/Spry.ai-workstation-bridge`.
 
 ```sh
 make build
@@ -91,7 +91,7 @@ the generated context. Do not put credentials into GoLand arguments or shared
 run configurations.
 
 ```sh
-make check       # formatting, vet, tests, race, contract, manifests, builds, vulnerabilities
+make check       # formatting, vet, tests, race, contracts, manifests, builds, vulnerabilities and applicable systemd checks
 make browser     # actual browser flows; needs installed Chrome and Node
 make package     # Linux amd64 server/helper/worker/CLI; macOS arm64/amd64 CLI
 ```

@@ -35,7 +35,7 @@ func TestFixedSummaryQueriesFreshnessAndCache(t *testing.T) {
 			t.Error("queue query includes per-priority breakdowns")
 		}
 		value := "42"
-		if strings.Contains(q, "timestamp(") {
+		if strings.Contains(q, "timestamp(") || strings.Contains(q, "_sample_timestamp_seconds") {
 			value = fmt.Sprint(now)
 		}
 		fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"private":"SECRET_SENTINEL"},"value":[%d,%q]}]}}`, now, value)
@@ -44,10 +44,10 @@ func TestFixedSummaryQueriesFreshnessAndCache(t *testing.T) {
 	p := NewPrometheus(ts.URL)
 	for range 2 {
 		state, values := p.Summary(context.Background())
-		if state.State != "available" || len(values) != 5 {
+		if state.State != "available" || len(values) != 8 {
 			t.Fatalf("summary: %#v %#v", state, values)
 		}
-		for _, v := range values[:4] {
+		for _, v := range values[:7] {
 			if v.State != "available" || v.Value == nil || *v.Value != 42 || v.ObservedAt.Unix() != now {
 				t.Fatalf("value: %#v", v)
 			}
@@ -56,12 +56,66 @@ func TestFixedSummaryQueriesFreshnessAndCache(t *testing.T) {
 		if strings.Contains(string(b), "SECRET_SENTINEL") {
 			t.Fatal("backend attributes leaked")
 		}
-		if values[4].State != "unavailable" || values[4].Value != nil {
+		if values[7].State != "unavailable" || values[7].Value != nil {
 			t.Fatal("unqualified GPU data advertised")
 		}
 	}
-	if calls.Load() != 8 {
+	if calls.Load() != 14 {
 		t.Fatalf("cache/fixed query bound: %d requests", calls.Load())
+	}
+}
+
+func TestPSUSummaryUsesSensorTimeAndPreservesUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name, result, want string
+		age                time.Duration
+	}{
+		{"available", `[{"value":[1,"240"]}]`, "available", 0},
+		{"measured-zero", `[{"value":[1,"0"]}]`, "available", 0},
+		{"frozen-textfile", `[{"value":[1,"240"]}]`, "stale", 2 * time.Minute},
+		{"unavailable", `[]`, "missing", 0},
+		{"ambiguous-node", `[{"value":[1,"240"]},{"value":[1,"240"]}]`, "missing", 0},
+		{"nonfinite", `[{"value":[1,"+Inf"]}]`, "missing", 0},
+		{"future-clock", `[{"value":[1,"240"]}]`, "missing", -time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now().Unix()
+			observed := time.Now().Add(-tc.age).Unix()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				q := r.URL.Query().Get("query")
+				result := `[]`
+				if strings.Contains(q, "workstation_psu_") {
+					availability := `workstation_psu_available{job="node"} == 1`
+					if strings.Contains(q, "energy_") {
+						availability = `workstation_psu_energy_available{job="node"} == 1`
+					}
+					if strings.Contains(q, "sum(") || strings.Contains(q, "timestamp(") ||
+						!strings.Contains(q, `and on(job,instance) (`+availability+`)`) {
+						t.Errorf("PSU query lacks single-node availability/sensor-age semantics: %s", q)
+					}
+					result = tc.result
+					if strings.Contains(q, "_sample_timestamp_seconds") {
+						// Prometheus's vector timestamp is current even when the
+						// textfile's actual sensor timestamp remains old.
+						result = fmt.Sprintf(`[{"value":[%d,"%d"]}]`, now, observed)
+					}
+				}
+				fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":%s}}`, result)
+			}))
+			defer server.Close()
+			_, values := NewPrometheus(server.URL).Summary(context.Background())
+			for _, v := range values[4:7] {
+				if v.State != tc.want {
+					t.Fatalf("%s: %#v", v.Name, v)
+				}
+				if tc.want == "missing" && (v.Value != nil || v.ObservedAt != nil) {
+					t.Fatal("unknown PSU measurement was converted to a number")
+				}
+				if tc.want != "missing" && (v.Value == nil || v.ObservedAt.Unix() != observed) {
+					t.Fatal("PSU source timestamp lost")
+				}
+			}
+		})
 	}
 }
 

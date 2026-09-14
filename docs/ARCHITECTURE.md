@@ -68,7 +68,8 @@ not the Agents SDK or Responses API. Its environment-free session receives only
 selected sanitized evidence through three fixed local handlers. A requested
 export plan is bound to the authenticated owner and remains unapproved. Provider
 text cannot authorize a tool, change policy, approve a plan or apply a patch.
-The detailed guide records privacy, spending and collection limitations.
+See [the adviser guide](ADVISER.md) for its credential, privacy, spending and
+live-acceptance boundaries.
 
 ## Persistence and external effects
 
@@ -169,11 +170,13 @@ Tool-only `kin-openapi v0.149.0` (MIT, commit
 transitive module checksums are pinned; they are not linked into runtime binaries.
 The Go vulnerability workflow follows [official guidance](https://go.dev/doc/security/vuln/).
 
-The helper uses fixed `kubectl` arguments from the reviewed K3s v1.35.7+k3s1
-contract. No `client-go` dependency is needed for this narrow adapter. The
-[client-go compatibility matrix](https://github.com/kubernetes/client-go#compatibility-matrix)
-and [out-of-cluster example at v0.35.7](https://github.com/kubernetes/client-go/tree/v0.35.7/examples/out-of-cluster-client-configuration)
-were reviewed; neither authorizes using the developer's current context.
+The helper uses fixed `kubectl` arguments from the K3s runtime selected by the
+installer's installed `versions.lock`; that lock, rather than this document, is
+the version authority. No `client-go` dependency is needed for this narrow
+adapter. The [client-go compatibility matrix](https://github.com/kubernetes/client-go#compatibility-matrix)
+and the matching-version out-of-cluster example must be reviewed when the
+selected runtime changes; neither authorizes using the developer's current
+context.
 K3s documents the administrative nature of its default kubeconfig in
 [cluster access](https://docs.k3s.io/cluster-access). Provision a separate identity
 using the permissions described in the deployment and qualification guides.

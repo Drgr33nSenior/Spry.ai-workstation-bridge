@@ -359,7 +359,7 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 	s.json(w, 201, p)
 }
 func (s *Server) getPlan(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.Engine.DB.View().Plans[r.PathValue("id")]
+	p, ok := s.Engine.DB.Plan(r.PathValue("id"))
 	if !ok {
 		s.fail(w, domain.Fail("not_found", "plan not found"))
 		return
@@ -507,7 +507,7 @@ func (s *Server) audit(w http.ResponseWriter, r *http.Request) {
 	if !s.owner(w, r) {
 		return
 	}
-	s.json(w, 200, s.Engine.DB.View().Audit)
+	s.json(w, 200, s.Engine.DB.AuditRecords())
 }
 func (s *Server) json(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
