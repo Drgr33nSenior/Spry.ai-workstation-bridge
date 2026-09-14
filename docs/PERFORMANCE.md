@@ -6,6 +6,11 @@ planning. These actions do not deploy, restart inference, run generated code,
 delete caches or qualify hardware. Retain the previous known-good workload and
 independent recovery access.
 
+The optional source-only UltraQuant-derived gfx1201 candidate uses these same
+evidence and owner-selection exports. See [EXPERIMENTAL-KV.md](EXPERIMENTAL-KV.md)
+for the runtime boundary, unsupported models and separately authorized checks.
+It is off by default and unqualified.
+
 ## Capabilities and limits
 
 | Work | Behaviour |

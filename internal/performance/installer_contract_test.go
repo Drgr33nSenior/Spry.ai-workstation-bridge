@@ -67,6 +67,7 @@ func TestCandidateInstallerPerformanceContract(t *testing.T) {
 		{"comparison", "normal", "comparison-not-qualified"},
 		{"comparison", "incomplete", "comparison-not-qualified"},
 		{"comparison", "declared-launch", "comparison-not-qualified"},
+		{"comparison", "experimental-kv", "comparison-not-qualified"},
 		{"comparison", "cross-quality-mismatch", "comparison-not-qualified"},
 		{"comparison", "cross-logprob-mismatch", "comparison-not-qualified"},
 		{"comparison", "unrelated-quality", "comparison-not-qualified"},
@@ -75,6 +76,7 @@ func TestCandidateInstallerPerformanceContract(t *testing.T) {
 		{"comparison", "refused", "failed"},
 		{"profile-selection", "normal", "selected-unqualified"},
 		{"profile-selection", "declared-launch", "selected-unqualified"},
+		{"profile-selection", "experimental-kv", "selected-unqualified"},
 		{"profile-selection", "cross-quality-mismatch", "failed"},
 		{"profile-selection", "cross-logprob-mismatch", "failed"},
 		{"profile-selection", "unrelated-quality", "failed"},
@@ -91,6 +93,7 @@ func TestCandidateInstallerPerformanceContract(t *testing.T) {
 		{"profile-status", "legacy-observation", "unknown"},
 		{"profile-status", "malformed-conditions", "unknown"},
 		{"profile-status", "unknown", "unknown"},
+		{"profile-status", "experimental-missing-observation", "unknown"},
 		{"profile-status", "refused", "failed"},
 		{"loading", "normal", "plan-only-unqualified"},
 		{"loading", "unsupported", "failed"},
@@ -193,7 +196,7 @@ config=re.sub(r'^INFERENCE_CACHE_FREE_RESERVE_MIB=.*$', 'INFERENCE_CACHE_FREE_RE
 					report.Quality.Cross.Baseline != report.Baseline.RunHash || report.Quality.Cross.Candidate != report.Candidate.RunHash) {
 					t.Fatal("candidate recommendation lacks the actual cross-profile checked-run pair")
 				}
-				if (tc.variant == "normal" || tc.variant == "declared-launch") && report.Recommendation != "candidate" {
+				if (tc.variant == "normal" || tc.variant == "declared-launch" || tc.variant == "experimental-kv") && report.Recommendation != "candidate" {
 					t.Fatal("matching checked profiles lost their fixture candidate recommendation")
 				}
 				switch tc.variant {
