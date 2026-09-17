@@ -63,6 +63,8 @@ func TestCandidateInstallerPerformanceContract(t *testing.T) {
 	}
 	for _, tc := range []struct{ kind, variant, status string }{
 		{"coding-eval", "normal", "incomplete-unqualified"},
+		{"coding-eval", "protocol", "incomplete-unqualified"},
+		{"coding-eval", "protocol-truncated", "incomplete-unqualified"},
 		{"coding-eval", "refused", "failed"},
 		{"comparison", "normal", "comparison-not-qualified"},
 		{"comparison", "incomplete", "comparison-not-qualified"},
@@ -157,6 +159,25 @@ config=re.sub(r'^INFERENCE_CACHE_FREE_RESERVE_MIB=.*$', 'INFERENCE_CACHE_FREE_RE
 			}
 			if summary.Status != tc.status || summary.Kind != tc.kind || len(summary.Artifacts) == 0 || summary.SHA256 != sha {
 				t.Fatalf("incorrect analysis status %+v", summary)
+			}
+			if tc.kind == "coding-eval" && strings.HasPrefix(tc.variant, "protocol") {
+				fields := map[string]domain.PerformanceField{}
+				for _, field := range summary.Fields {
+					fields[field.Name] = field
+				}
+				passed, failed := "1", "0"
+				if tc.variant == "protocol-truncated" {
+					passed, failed = "0", "1"
+				}
+				for name, expected := range map[string]string{"protocol_passed": passed, "protocol_failed": failed, "protocol_missing": "2"} {
+					field, ok := fields[name]
+					if !ok || field.Value != expected || field.Unit != "tasks" || field.State != "observed" {
+						t.Fatalf("protocol producer/consumer mismatch: %s %+v", name, field)
+					}
+				}
+				if strings.Contains(string(raw), "synthetic-call") || strings.Contains(string(raw), "workstation_status") {
+					t.Fatal("public summary exposed private protocol content")
+				}
 			}
 			if tc.variant == "incomplete" && tc.kind == "comparison" && !strings.Contains(summary.Reason, "inconclusive") {
 				t.Fatal("incomplete comparison invented eligibility", summary.Reason)
