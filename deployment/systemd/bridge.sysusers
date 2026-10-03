@@ -1,0 +1,4 @@
+# Review account allocation before installation. The resolved bridge UID must
+# match allowed_uid in host-policy.json; never infer an existing user's UID.
+u bridge - "Spry.ai management service" /var/lib/bridge /usr/bin/nologin
+u bridge-worker - "Spry.ai contained build worker" /var/lib/bridge-worker /usr/bin/nologin

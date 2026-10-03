@@ -1,0 +1,34 @@
+{
+  "model": {
+    "provider": "custom",
+    "default": "Qwen3.8-27B-FP8",
+    "base_url": "http://127.0.0.1:18000/v1",
+    "api_key": "${WORKSTATION_AGENT_API_KEY}",
+    "context_length": 32768
+  },
+  "approvals": {
+    "mode": "manual"
+  },
+  "terminal": {
+    "backend": "local"
+  },
+  "fallback_providers": [],
+  "compression": {
+    "enabled": true,
+    "threshold": 0.5,
+    "target_ratio": 0.2,
+    "protect_last_n": 20
+  },
+  "auxiliary": {
+    "compression": {
+      "provider": "main"
+    },
+    "title_generation": {
+      "enabled": false
+    },
+    "background_review": {
+      "enabled": false
+    }
+  },
+  "mcp_servers": {}
+}

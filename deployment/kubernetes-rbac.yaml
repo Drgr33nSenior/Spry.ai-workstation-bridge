@@ -1,0 +1,73 @@
+# Review namespace and named workloads against host-policy.json before applying.
+# This file is packaging input. Bridge never applies it or creates credentials.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bridge-host-executor
+  namespace: ai-home-lab
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bridge-gpu-consumer-observer
+rules:
+  # Existing session gates need ALL pending/bound GPU consumers and all nodes.
+  # Namespace-scoped reads cannot prove that an unmanaged GPU holder is absent.
+  - apiGroups: [""]
+    resources: [pods, nodes]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [namespaces]
+    resourceNames: [ai-home-lab]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bridge-gpu-consumer-observer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: bridge-gpu-consumer-observer
+subjects:
+  - kind: ServiceAccount
+    name: bridge-host-executor
+    namespace: ai-home-lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bridge-named-workloads
+  namespace: ai-home-lab
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    resourceNames: [sglang, parent-steam-headless]
+    verbs: [get, list, watch, update]
+  - apiGroups: [apps]
+    resources: [deployments/scale]
+    resourceNames: [sglang, parent-steam-headless]
+    verbs: [get, patch, update]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [configmaps]
+    # Replace with the rendered names captured in root qualification evidence.
+    resourceNames: [sglang-profile-replace-with-rendered-hash, sunshine-profile-replace-with-rendered-hash]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bridge-named-workloads
+  namespace: ai-home-lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bridge-named-workloads
+subjects:
+  - kind: ServiceAccount
+    name: bridge-host-executor
+    namespace: ai-home-lab

@@ -1,0 +1,145 @@
+package api_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/api"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/config"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/domain"
+	"github.com/Drgr33nSenior/Spry.ai-workstation-bridge/internal/store"
+)
+
+func TestTelemetrySummaryDoesNotCloneRetainedEvents(t *testing.T) {
+	f := setup(t)
+	h := api.New(config.Config{Mode: "demo", AllowedHosts: []string{"bridge.test"}}, f.eng, nil).Handler()
+	sample := func() {
+		r := httptest.NewRequest("GET", "http://bridge.test/api/v1/telemetry/summary", nil)
+		r.Header.Set("Authorization", "Bearer "+f.tokens["owner"])
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != 200 || strings.Contains(w.Body.String(), "PRIVATE_EVENT") {
+			t.Fatal("invalid or leaking telemetry summary", w.Code)
+		}
+	}
+	small := testing.AllocsPerRun(3, sample)
+	if err := f.db.Update(func(v *store.State) error {
+		for i := 0; i < 500; i++ {
+			id := fmt.Sprint(i)
+			events := make([]domain.Progress, 128)
+			for j := range events {
+				events[j].Message = "PRIVATE_EVENT"
+			}
+			v.Operations[id] = domain.Operation{ID: id, State: "succeeded", UpdatedAt: time.Now(), Events: events}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	large := testing.AllocsPerRun(3, sample)
+	t.Logf("summary allocations empty=%.0f retained=%.0f", small, large)
+	if large > small+100 {
+		t.Fatalf("summary allocations grew with retained event payloads: %.0f -> %.0f", small, large)
+	}
+}
+
+func TestTelemetrySummaryOwnerPolicyAndUnavailable(t *testing.T) {
+	f := setup(t)
+	for _, tc := range []struct {
+		role   string
+		status int
+	}{{"", 401}, {"viewer", 403}, {"operator", 403}, {"owner", 200}} {
+		status, b, _ := f.request(t, "GET", "/api/v1/telemetry/summary", tc.role, nil, nil)
+		if status != tc.status {
+			t.Fatalf("role %s: %d %s", tc.role, status, b)
+		}
+		if status == 200 {
+			var v domain.TelemetrySummary
+			if json.Unmarshal(b, &v) != nil {
+				t.Fatal("summary is not typed JSON")
+			}
+			if v.Backend.State != "not_configured" || v.MetricsExport.State != "not_configured" || !v.MutationStorageAvailable || len(v.Values) != 8 || v.ObservedAt.IsZero() {
+				t.Fatalf("summary: %s", b)
+			}
+			for _, token := range f.tokens {
+				if strings.Contains(string(b), token) {
+					t.Fatal("credential in summary")
+				}
+			}
+			for _, value := range v.Values {
+				if strings.HasPrefix(value.Name, "psu_") && (value.State != "missing" || value.Value != nil) {
+					t.Fatal("demo without a telemetry backend invented PSU measurements")
+				}
+			}
+		}
+	}
+	status, _, _ := f.request(t, "GET", "/api/v1/telemetry/summary?query=SECRET_SENTINEL&url=http://169.254.169.254", "owner", nil, nil)
+	if status != 400 {
+		t.Fatalf("arbitrary query accepted: %d", status)
+	}
+}
+
+func TestTelemetryAPIExcludesBodiesQueriesKeysAndIdentifiers(t *testing.T) {
+	const sentinel = "SECRET_SENTINEL"
+	var mu sync.Mutex
+	var exports []byte
+	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		exports = append(exports, b...)
+		exports = append(exports, fmt.Sprint(r.Header)...)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/x-protobuf")
+	}))
+	defer collector.Close()
+	f := setupTelemetry(t, config.Telemetry{Enabled: true, OTLPEndpoint: collector.URL, TraceSampleRatio: 1})
+	f.request(t, "GET", "/api/v1/operations/"+sentinel+"?prompt="+sentinel, "owner", nil, map[string]string{"X-Secret": sentinel, "Baggage": "secret=" + sentinel})
+	f.request(t, "POST", "/api/v1/plans", "owner", `{"action":"SECRET_SENTINEL","target":"demo-workstation"}`, map[string]string{"Idempotency-Key": sentinel})
+	f.request(t, "GET", "/api/v1/status", "owner", nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := f.eng.Telemetry.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(exports) == 0 {
+		t.Fatal("enabled API exported no telemetry")
+	}
+	if strings.Contains(string(exports), sentinel) {
+		t.Fatal("request contents escaped into telemetry")
+	}
+	for _, token := range f.tokens {
+		if strings.Contains(string(exports), token) {
+			t.Fatal("bearer token escaped into telemetry")
+		}
+	}
+}
+
+func TestTelemetryBackendFailureDoesNotBreakAPI(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503); fmt.Fprint(w, "SECRET_SENTINEL") }))
+	defer backend.Close()
+	f := setupTelemetry(t, config.Telemetry{Enabled: true, OTLPEndpoint: backend.URL, PrometheusURL: backend.URL, TraceSampleRatio: 1})
+	start := time.Now()
+	status, b, _ := f.request(t, "GET", "/api/v1/telemetry/summary", "owner", nil, nil)
+	if status != 200 || time.Since(start) > 3*time.Second || strings.Contains(string(b), "SECRET_SENTINEL") {
+		t.Fatalf("unbounded/unsafe summary failure: %d %s", status, b)
+	}
+	var summary domain.TelemetrySummary
+	_ = json.Unmarshal(b, &summary)
+	if summary.Backend.State != "error" {
+		t.Fatalf("backend failure hidden: %s", b)
+	}
+	status, b, _ = f.request(t, "GET", "/api/v1/status", "owner", nil, nil)
+	if status != 200 {
+		t.Fatalf("healthy API blocked: %d %s", status, b)
+	}
+}

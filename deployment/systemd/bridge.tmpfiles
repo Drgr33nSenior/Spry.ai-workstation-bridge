@@ -1,0 +1,5 @@
+d /run/workstation 0755 root root -
+d /var/lib/spry-bridge-evidence 0755 root root -
+# Model storage requires an owner-reviewed existing PVC mount and reader GID.
+# Do not instantiate a guessed reader group. Before live staging, the owner
+# creates the exact model root as bridge:<qualified workload fsGroup> mode 2750.

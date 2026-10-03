@@ -1,0 +1,10 @@
+{
+  "revision": "",
+  "serving": {
+    "model": "Qwen3.5-9B", "context": 4096, "concurrency": 2,
+    "memory_fraction": 0.8, "cpu_offload_gib": 0,
+    "max_request_tokens": 0, "max_output_tokens": 0
+  },
+  "resources": {"cpu": 20, "memory_mib": 32768, "shared_memory_mib": 16384, "gpu_count": 1},
+  "caches": {"models_gib": 128, "compiler_gib": 100, "shader_gib": 16, "build_jobs": 8, "build_memory_mib": 32768, "scratch_gib": 64}
+}

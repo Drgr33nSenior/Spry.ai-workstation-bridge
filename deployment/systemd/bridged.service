@@ -1,0 +1,47 @@
+[Unit]
+Description=Spry.ai private workstation management
+After=network.target bridge-hostd.socket
+Wants=bridge-hostd.socket
+
+[Service]
+Type=simple
+User=bridge
+Group=bridge
+ExecStart=/usr/lib/bridge/bridged --config /etc/bridge/server.json
+WorkingDirectory=/var/lib/bridge
+StateDirectory=bridge
+StateDirectoryMode=0700
+RuntimeDirectory=bridge
+RuntimeDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=45s
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/bridge /srv/ai/bridge-models
+InaccessiblePaths=-/etc/bridge/host-policy.json -/etc/bridge/helper.kubeconfig -/var/lib/bridge-hostd -/var/lib/workstation-session
+MemoryMax=1G
+TasksMax=128
+LimitNOFILE=2048
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

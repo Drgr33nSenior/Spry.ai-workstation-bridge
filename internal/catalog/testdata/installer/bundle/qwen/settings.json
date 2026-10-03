@@ -1,0 +1,50 @@
+{
+  "general": {
+    "enableAutoUpdate": false
+  },
+  "privacy": {
+    "usageStatisticsEnabled": false
+  },
+  "telemetry": {
+    "enabled": false
+  },
+  "security": {
+    "auth": {
+      "selectedType": "openai"
+    },
+    "folderTrust": {
+      "enabled": true
+    }
+  },
+  "tools": {
+    "approvalMode": "default"
+  },
+  "context": {
+    "fileName": [
+      "AGENTS.md",
+      "QWEN.md"
+    ]
+  },
+  "model": {
+    "name": "Qwen3.8-27B-FP8"
+  },
+  "modelProviders": {
+    "openai": [
+      {
+        "id": "Qwen3.8-27B-FP8",
+        "name": "Workstation local Qwen",
+        "baseUrl": "http://127.0.0.1:18000/v1",
+        "envKey": "WORKSTATION_AGENT_API_KEY",
+        "generationConfig": {
+          "contextWindowSize": 32768,
+          "timeout": 120000,
+          "streamIdleTimeoutMs": 180000,
+          "maxRetries": 1,
+          "samplingParams": {
+            "max_tokens": 4096
+          }
+        }
+      }
+    ]
+  }
+}

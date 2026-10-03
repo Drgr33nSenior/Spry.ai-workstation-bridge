@@ -1,0 +1,14 @@
+name: source checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: source-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml

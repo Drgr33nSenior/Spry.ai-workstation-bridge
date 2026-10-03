@@ -1,0 +1,25 @@
+{
+  "theme": "base",
+  "layout": "dagre",
+  "htmlLabels": false,
+  "securityLevel": "strict",
+  "deterministicIds": true,
+  "deterministicIDSeed": "bridge-workstation",
+  "themeVariables": {
+    "fontFamily": "Arial, sans-serif",
+    "fontSize": "16px",
+    "primaryColor": "#eaf2fc",
+    "primaryTextColor": "#172b4d",
+    "primaryBorderColor": "#47658a",
+    "lineColor": "#52647a",
+    "clusterBkg": "#f7f9fc",
+    "clusterBorder": "#94a3b8",
+    "edgeLabelBackground": "#ffffff"
+  },
+  "flowchart": {
+    "curve": "linear",
+    "nodeSpacing": 28,
+    "rankSpacing": 44,
+    "padding": 16
+  }
+}

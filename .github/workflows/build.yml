@@ -1,0 +1,38 @@
+name: versioned build
+
+on:
+  push:
+    # This is a glob, not a SemVer validator. Validate before checks or builds.
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    # Updating or deleting an existing tag must not produce another build.
+    if: ${{ github.event.created == true && github.event.deleted == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - name: Validate stable version tag
+        id: tag
+        shell: bash
+        env:
+          # Pass the ref as data; never interpolate it into shell source.
+          BRIDGE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BRIDGE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            printf '%s\n' 'Expected a stable vMAJOR.MINOR.PATCH tag without leading zeroes or suffixes.' >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$BRIDGE_TAG" >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}

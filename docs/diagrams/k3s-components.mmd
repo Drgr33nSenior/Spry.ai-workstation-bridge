@@ -1,0 +1,53 @@
+flowchart TB
+  accTitle: Bare-metal K3s components and GPU integration
+  accDescr: Single Arch K3s server with SQLite control-plane state, host node agents and kube-system add-ons. AMD GPU Operator manages the conventional device plugin and labels, not host drivers. Workload PVCs use non-replicated local storage. This is reviewed source configuration, not proof of installation.
+
+  subgraph server["SOURCE VIEW · ARCH HOST — single k3s server · v1.35.7+k3s1"]
+    direction TB
+    subgraph control["Control plane · host processes"]
+      api["Kubernetes API server"]
+      reconcile["Scheduler + controller manager"]
+      sqlite[("SQLite<br/>Single-server cluster state")]
+      reconcile <-->|"reconcile / schedule"| api
+      api <-->|"persist cluster state"| sqlite
+    end
+
+    subgraph node["Node services · host processes"]
+      kubelet["Kubelet<br/>Static CPU Manager opt-in"]
+      runtime["containerd 2.x → runc<br/>Systemd cgroups"]
+      network["Flannel VXLAN + kube-proxy<br/>K3s NetworkPolicy controller"]
+      kubelet -->|"CRI / OCI lifecycle"| runtime
+    end
+
+    subgraph system["kube-system · bundled add-ons"]
+      dns["CoreDNS<br/>Service discovery"]
+      metrics["metrics-server<br/>Kubelet resource metrics<br/>Not a telemetry stack"]
+      ingress["Traefik<br/>ServiceLB disabled<br/>External address not supplied"]
+      provisioner["local-path provisioner<br/>WaitForFirstConsumer<br/>Delete reclaim policy"]
+    end
+
+    subgraph amd["kube-amd-gpu · explicit operator deployment"]
+      operator["AMD GPU Operator v1.5.1<br/>NFD discovers hardware labels"]
+      plugin["AMD device plugin + node labeller<br/>amd.com/gpu device counts<br/>Driver installer / KMM / DRA off"]
+      operator -->|"reconcile DeviceConfig"| plugin
+    end
+
+    apps["ai-home-lab · application pods<br/>Defined in source; replicas = 0<br/>See workload view"]
+    driver["Host amdgpu + firmware<br/>Two R9700s expected<br/>Separate 32 GiB VRAM pools"]
+    storage[("Node-local PVC directories<br/>/var/lib/rancher/k3s/storage<br/>Encrypted NVMe-backed root")]
+
+    api <-->|"pod specs / status"| kubelet
+    plugin <-->|"register / allocate devices"| kubelet
+    runtime -->|"runs containers"| apps
+    network -->|"pod networking / policy"| apps
+    dns -->|"answers service DNS queries"| apps
+    ingress -->|"HTTP route to WebUI Service"| apps
+    apps -->|"allocated GPU access"| driver
+    provisioner -->|"provision claim directories"| storage
+    apps -->|"PVC mounts through kubelet"| storage
+  end
+
+  classDef storage fill:#e9f5ef,stroke:#39745a,color:#173c2c
+  classDef gated fill:#fff7e6,stroke:#a56c12,color:#553609,stroke-dasharray:5 4
+  class sqlite,storage storage
+  class apps,ingress,operator,plugin gated
