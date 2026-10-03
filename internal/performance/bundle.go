@@ -121,6 +121,9 @@ func Verify(ctx context.Context, root, digest string) (Manifest, error) {
 	if err == nil && count != len(m.Files) {
 		err = errors.New("performance evidence file missing")
 	}
+	if err == nil {
+		err = validateExperimentalKVBundle(root, m)
+	}
 	return m, err
 }
 func ValidateSummary(s domain.PerformanceSummary) error {

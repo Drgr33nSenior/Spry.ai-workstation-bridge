@@ -63,10 +63,13 @@ func TestCandidateInstallerPerformanceContract(t *testing.T) {
 	}
 	for _, tc := range []struct{ kind, variant, status string }{
 		{"coding-eval", "normal", "incomplete-unqualified"},
+		{"coding-eval", "protocol", "incomplete-unqualified"},
+		{"coding-eval", "protocol-truncated", "incomplete-unqualified"},
 		{"coding-eval", "refused", "failed"},
 		{"comparison", "normal", "comparison-not-qualified"},
 		{"comparison", "incomplete", "comparison-not-qualified"},
 		{"comparison", "declared-launch", "comparison-not-qualified"},
+		{"comparison", "experimental-kv", "comparison-not-qualified"},
 		{"comparison", "cross-quality-mismatch", "comparison-not-qualified"},
 		{"comparison", "cross-logprob-mismatch", "comparison-not-qualified"},
 		{"comparison", "unrelated-quality", "comparison-not-qualified"},
@@ -75,6 +78,7 @@ func TestCandidateInstallerPerformanceContract(t *testing.T) {
 		{"comparison", "refused", "failed"},
 		{"profile-selection", "normal", "selected-unqualified"},
 		{"profile-selection", "declared-launch", "selected-unqualified"},
+		{"profile-selection", "experimental-kv", "selected-unqualified"},
 		{"profile-selection", "cross-quality-mismatch", "failed"},
 		{"profile-selection", "cross-logprob-mismatch", "failed"},
 		{"profile-selection", "unrelated-quality", "failed"},
@@ -91,6 +95,7 @@ func TestCandidateInstallerPerformanceContract(t *testing.T) {
 		{"profile-status", "legacy-observation", "unknown"},
 		{"profile-status", "malformed-conditions", "unknown"},
 		{"profile-status", "unknown", "unknown"},
+		{"profile-status", "experimental-missing-observation", "unknown"},
 		{"profile-status", "refused", "failed"},
 		{"loading", "normal", "plan-only-unqualified"},
 		{"loading", "unsupported", "failed"},
@@ -155,6 +160,25 @@ config=re.sub(r'^INFERENCE_CACHE_FREE_RESERVE_MIB=.*$', 'INFERENCE_CACHE_FREE_RE
 			if summary.Status != tc.status || summary.Kind != tc.kind || len(summary.Artifacts) == 0 || summary.SHA256 != sha {
 				t.Fatalf("incorrect analysis status %+v", summary)
 			}
+			if tc.kind == "coding-eval" && strings.HasPrefix(tc.variant, "protocol") {
+				fields := map[string]domain.PerformanceField{}
+				for _, field := range summary.Fields {
+					fields[field.Name] = field
+				}
+				passed, failed := "1", "0"
+				if tc.variant == "protocol-truncated" {
+					passed, failed = "0", "1"
+				}
+				for name, expected := range map[string]string{"protocol_passed": passed, "protocol_failed": failed, "protocol_missing": "2"} {
+					field, ok := fields[name]
+					if !ok || field.Value != expected || field.Unit != "tasks" || field.State != "observed" {
+						t.Fatalf("protocol producer/consumer mismatch: %s %+v", name, field)
+					}
+				}
+				if strings.Contains(string(raw), "synthetic-call") || strings.Contains(string(raw), "workstation_status") {
+					t.Fatal("public summary exposed private protocol content")
+				}
+			}
 			if tc.variant == "incomplete" && tc.kind == "comparison" && !strings.Contains(summary.Reason, "inconclusive") {
 				t.Fatal("incomplete comparison invented eligibility", summary.Reason)
 			}
@@ -193,7 +217,7 @@ config=re.sub(r'^INFERENCE_CACHE_FREE_RESERVE_MIB=.*$', 'INFERENCE_CACHE_FREE_RE
 					report.Quality.Cross.Baseline != report.Baseline.RunHash || report.Quality.Cross.Candidate != report.Candidate.RunHash) {
 					t.Fatal("candidate recommendation lacks the actual cross-profile checked-run pair")
 				}
-				if (tc.variant == "normal" || tc.variant == "declared-launch") && report.Recommendation != "candidate" {
+				if (tc.variant == "normal" || tc.variant == "declared-launch" || tc.variant == "experimental-kv") && report.Recommendation != "candidate" {
 					t.Fatal("matching checked profiles lost their fixture candidate recommendation")
 				}
 				switch tc.variant {
