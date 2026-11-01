@@ -455,3 +455,45 @@ func TestDownloadDestinationAndCredentials(t *testing.T) {
 		t.Fatal("forwarded credentials")
 	}
 }
+
+func TestCurrentHubCDNRedirect(t *testing.T) {
+	client := downloadClient()
+	for _, raw := range []string{
+		"https://us.aws.cdn.hf.co/model?reviewed-signed-redirect=opaque",
+		"https://us.aws.cdn.hf.co:443/model",
+	} {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := &http.Request{URL: u, Header: http.Header{
+			"Authorization": {"synthetic"}, "Cookie": {"synthetic"}, "Proxy-Authorization": {"synthetic"},
+		}}
+		if err = client.CheckRedirect(r, nil); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"Authorization", "Cookie", "Proxy-Authorization"} {
+			if r.Header.Get(key) != "" {
+				t.Fatalf("forwarded %s", key)
+			}
+		}
+	}
+	for _, raw := range []string{
+		"http://us.aws.cdn.hf.co/model", "https://us.aws.cdn.hf.co:444/model",
+		"https://us.aws.cdn.hf.co.evil.invalid/model", "https://evil.us.aws.cdn.hf.co/model",
+		"https://us.gcp.cdn.hf.co/model", "https://user:synthetic@us.aws.cdn.hf.co/model",
+		"https://us.aws.cdn.hf.co/model#fragment",
+	} {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if client.CheckRedirect(&http.Request{URL: u, Header: http.Header{}}, nil) == nil {
+			t.Fatal("allowed unreviewed redirect", raw)
+		}
+	}
+	u, _ := url.Parse("https://us.aws.cdn.hf.co/model")
+	if client.CheckRedirect(&http.Request{URL: u, Header: http.Header{}}, make([]*http.Request, 6)) == nil {
+		t.Fatal("allowed excessive redirects")
+	}
+}

@@ -52,7 +52,10 @@ const (
 	readerFileMode      fs.FileMode = 0640
 )
 
-var origins = map[string]bool{"huggingface.co": true, "cdn-lfs.huggingface.co": true, "cdn-lfs.hf.co": true, "cdn-lfs-us-1.hf.co": true, "cas-bridge.xethub.hf.co": true}
+// The current Hub redirects reviewed weight shards to this exact CDN edge.
+// Keep explicit origins, not the provider's broader wildcard recommendation:
+// https://huggingface.co/docs/hub/models-downloading#downloading-behind-a-proxy-or-firewall
+var origins = map[string]bool{"huggingface.co": true, "cdn-lfs.huggingface.co": true, "cdn-lfs.hf.co": true, "cdn-lfs-us-1.hf.co": true, "cas-bridge.xethub.hf.co": true, "us.aws.cdn.hf.co": true}
 
 type downloadProgress struct {
 	callback    func(string, int64) error

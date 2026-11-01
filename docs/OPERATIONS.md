@@ -73,6 +73,13 @@ new revision construction. Published directories are 0750, files/receipts 0640;
 the controller inherits and verifies GIDs, never changes them. Keep both
 `UMask=0077` and `RestrictSUIDSGID=yes`.
 
+Model downloads follow only explicit reviewed HTTPS origins. The current
+`us.aws.cdn.hf.co` edge is included because the Hub redirects pinned weight
+shards there; see [Hugging Face download hosts](https://huggingface.co/docs/hub/models-downloading#downloading-behind-a-proxy-or-firewall).
+Other new hosts remain refused. Preserve partial downloads on failure and
+review the redirect destination before changing source. Do not use wildcard
+hosts, disable TLS checks or substitute an unverified snapshot.
+
 For an existing snapshot, first submit `model.verify`. If its complete receipt,
 tree, hashes and GID are valid, submit a `model.stage` plan for the same selected
 model and revision. Repeat staging repairs only that verified managed tree; it
