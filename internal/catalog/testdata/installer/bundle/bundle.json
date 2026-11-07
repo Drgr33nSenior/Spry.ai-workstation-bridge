@@ -12,13 +12,14 @@
   "model": "Qwen3.8-27B-FP8",
   "context_tokens": 32768,
   "max_output_tokens": 4096,
+  "retrieval_url": "",
   "output_limit_support": {
     "qwen": "request",
     "dsh": "request-default",
     "hermes": "unsupported-provider-owned"
   },
   "config_sha256": {
-    "qwen": "9effc31a9fd1871c967d0c0e34fa42c5dc91e53fef343dfbd9b0eb661bc61358",
+    "qwen": "1d4bced4dd4804ee099bdf1b8518c25eff4189b5d5d359db759ab9a723db9ec6",
     "dsh": "1dbb3b798fbe9f808db3fc7c2f3bb41c90a25dcafe8ba77e32c9daf13bdaef25",
     "hermes": "faff1391a5e5262b787ec59512c14799be33d7c654a05161a02de66e8d48046b"
   },

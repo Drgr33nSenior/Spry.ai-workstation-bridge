@@ -1,6 +1,9 @@
 # Immutable external-input lock. Refresh values only through a reviewed change.
+# Shared-service image pins live in apps/base/shared-api/workloads.yaml and
+# infrastructure/service/alertmanager.yaml; creative source/assets in
+# infrastructure/creative/runtime.json. See docs/AI-SERVICE.md for feature gates.
 LOCK_FORMAT=1
-LOCK_DATE=2026-08-27
+LOCK_DATE=2026-10-06
 ALMALINUX_IMAGE_NAME=AlmaLinux-9-GenericCloud-9.8-20260810.x86_64.qcow2
 ALMALINUX_IMAGE_URL=https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-9.8-20260810.x86_64.qcow2
 ALMALINUX_IMAGE_SHA256=6bdab6376d46d42e4203ace3733efafc7c5d37c7cb443a6cc74750097002d74b
@@ -36,7 +39,11 @@ PARU_AUR_COMMIT=329be2113c590046cb29858c23d9b96a8d7bd586
 LINUX_GIT_AUR_REPOSITORY=https://aur.archlinux.org/linux-git.git
 LINUX_GIT_AUR_COMMIT=c783913866ae402948c9becf6ea60c52a50f8204
 LINUX_GIT_SOURCE_REPOSITORY=torvalds/linux
-LINUX_GIT_SOURCE_COMMIT=73e3f0710014fe6d4ed98cfc02292f6121db7558
+# Experimental daily candidate only. v7.3 final is not released. The peeled
+# v7.3-rc6 commit is exact and must pass the hardware-profile and rollback gates.
+LINUX_GIT_SOURCE_TAG=v7.3-rc6
+LINUX_GIT_SOURCE_TAG_OBJECT=4eeccbed21e50c19f97be9d325511f3de6343f2d
+LINUX_GIT_SOURCE_COMMIT=a90ee4305c4a5df72c11b31dacfdc76e00fcf78a
 AWS_SSM_AUR_REPOSITORY=https://aur.archlinux.org/aws-session-manager-plugin.git
 AWS_SSM_AUR_COMMIT=aa93839e62d2eb14ebfdd4eb38a538d5172c2674
 # AMD migration source inputs inspected 2026-09-04. These are candidates, not a
@@ -64,6 +71,14 @@ SGLANG_ROCM_CONFIG_DIGEST=sha256:8474934b5049db5e3dbd9ee220e41b9d1a397a25ca0daac
 SGLANG_SERVER_ARGS_SHA256=ad470ede790c2b5fdf13d82dbf24ea6821747b8a5c581e81224ed7603bc23710
 SGLANG_COMPILE_DECORATION_SHA256=77b1e38dba14788800b6b6351af1b5b8a80d9e42b91b57e9484ea4561d33a48c
 SGLANG_QWEN35_SOURCE_SHA256=48a8e32043f1bcf711243152e53db5a1bdec0372913a28acd6fd59bc0feedf6b
+# Owner-selected 2026-10-06 single-GPU BF16 baseline. The local image must be
+# imported by digest; it is not published. Selection is not workload or speed
+# qualification. Keep the preceding ROCm 10.0 contract for dual FP8 and rollback.
+SGLANG_SINGLE_ROCM_IMAGE=localhost/workstation/sglang@sha256:c9e4d0e0ea8818de29ccef4249119fc1c096d7a924b86c63567a6b9f9d5c3c8b
+SGLANG_SINGLE_ROCM_CONFIG_DIGEST=sha256:e3c1447f2adafa3ddc89041b1bb4cca0829f48864765cb7e2761264dddcdbf84
+SGLANG_SINGLE_SERVER_ARGS_SHA256=5ed5badef8dca0ee3dd2b34a1c9c417e172ff1a947d9fe802f7983fb4a2be950
+SGLANG_SINGLE_COMPILE_DECORATION_SHA256=86c7a5c495632bc42d22719f87f0ad0c8fadd52f189994243eec41d80b47ed28
+SGLANG_SINGLE_QWEN35_SOURCE_SHA256=cd580d4cd0dff194890e7b58bbc0a80d69bab1aea4ff5eb6c0b272e524bca782
 # Model choices reviewed 2026-09-08. Revisions resolved from official HF repos;
 # weights were not downloaded. Stage these revisions, not moving main branches.
 SGLANG_DUAL_MODEL_REPOSITORY=Qwen/Qwen3.8-27B-FP8
@@ -78,14 +93,18 @@ SUNSHINE_VERSION=2026.906.222525
 SUNSHINE_COMMIT=cb72dffa3233c5815cd5ba88f09f049dd679ba75
 SUNSHINE_DEBIAN_SHA256=c87f226920ad83055a898be1f0c7540307593e92d8b0baf1f076909758db8ca0
 # Matched amd64/i386 Mesa userspace from signed Debian trixie-backports.
-SUNSHINE_MESA_DEBIAN_VERSION=26.1.2-1~bpo13+1
+SUNSHINE_MESA_DEBIAN_VERSION=26.1.6-1~bpo13+1
 # Headless Wayland session: reviewed virtual-backend and session-hook contract.
 KWIN_DEBIAN_VERSION=4:6.3.6-1
-# CPU-only RAG pilot inputs reviewed 2026-09-08. Registry config revision matches
+# Opt-in Arch gaming image; coherent signed repository snapshot, not live rolling.
+SUNSHINE_ARCH_BASE_IMAGE=docker.io/library/archlinux@sha256:dfc5be7be44cf1acf3d9b3b902e3e9c8a29f97ed41e35631823cdc9c97e5d4f0
+SUNSHINE_ARCH_SNAPSHOT=2026/10/31
+SUNSHINE_ARCH_SHA256=efe1f0229f9d6da026d8d4d8d93f70211965a1d125defff71b747dd8b6cdd42a
+# CPU-only RAG pilot inputs reviewed 2026-11-01. Registry config revision matches
 # the source commit; runtime, first-admin bootstrap and retrieval remain unqualified.
-OPEN_WEBUI_VERSION=0.11.3
-OPEN_WEBUI_COMMIT=2a960a59fe1dbbd35282f0556b3666d81102e781
-OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui:v0.11.3@sha256:9cd136effce6bb12a6a1988a35ab3b82cb40c48a6768fceeb17c83baf7cfac9c
+OPEN_WEBUI_VERSION=0.11.4
+OPEN_WEBUI_COMMIT=8bd8b4fac5e059578ac0c74b3c18d11139f88b7d
+OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui:v0.11.4@sha256:332438e079ad23bb11b0ab278b43e7c98b50e8cec14b0840281644e8a289f49f
 RAG_EMBEDDING_REPOSITORY=Qwen/Qwen3-Embedding-0.6B
 RAG_EMBEDDING_REVISION=97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
 # Per-file SHA-256 inputs: apps/overlays/rag/SHA256SUMS (safetensors, no pickle).
