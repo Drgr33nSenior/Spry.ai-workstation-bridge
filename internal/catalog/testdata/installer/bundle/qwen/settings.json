@@ -37,9 +37,9 @@
         "envKey": "WORKSTATION_AGENT_API_KEY",
         "generationConfig": {
           "contextWindowSize": 32768,
-          "timeout": 120000,
+          "timeout": 180000,
           "streamIdleTimeoutMs": 180000,
-          "maxRetries": 1,
+          "maxRetries": 0,
           "samplingParams": {
             "max_tokens": 4096
           }

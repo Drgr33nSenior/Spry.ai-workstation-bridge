@@ -3,7 +3,7 @@
 # Does not run an installer, launch a client, or approve runtime hashes.
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
-revision=67a506090e8ecf696190e0be55f865e3ce054d0e
+revision=0d7655fed8d7764e75063fd84c2f67fe2ab520fe
 if [[ $# == 2 && $1 == --candidate ]]; then
   candidate=$(cd -- "$2" && pwd -P)
   work=$(mktemp -d)
