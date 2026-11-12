@@ -35,7 +35,7 @@ The expected workstation specification is not discovered hardware.
 | Privileged fencing/provenance | Installed runtime/session gates | Root policy, peer UID, typed hashed IDs, installed artifact hashes, exact qualification, root recovery | API tamper/source drift, lock ownership, recovery-required restart; independent root policy tests | Real Linux process/DRM visibility cannot be inferred from CI |
 | Durable operations | New Bridge boundary | Single-writer atomic store, intent before effects, source/live separation, idempotency, queue, cancellation, explicit restore/reconcile | Faults before/after source rename, storage poison, queue recovery fence, restart inspect/no redispatch | No exactly-once external-effect claim |
 | Private deployment/RBAC | Installer-pinned K3s and namespace abstractions | Outside-K3s services, local sockets, explicit HTTPS/VPN policy, narrow RBAC | Source contract/manifests and cross-builds | Admission, RBAC and systemd behavior NOT RUN on actual workstation |
-| Release packaging | No existing application build | Go1.27.1, pinned runtime/validation/security dependencies, local archives, source-only CI | `make check`, `make package`, `make browser` | Cross-builds do not qualify deployment |
+| Release packaging | No existing application build | Go1.27.4, pinned runtime/validation/security dependencies, local archives, source-only CI | `make check`, `make package`, `make browser` | Cross-builds do not qualify deployment |
 
 Model publication, recovery chaining, worker cgroup setup and browser-session
 isolation have explicit safety boundaries. They do not replace target

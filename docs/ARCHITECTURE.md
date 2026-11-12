@@ -159,7 +159,7 @@ or a browser checkbox.
 
 ## Dependencies and evidence
 
-Go 1.27.1 is pinned in `.go-version`. HTTP timeout, TLS and shutdown mechanisms follow the
+Go 1.27.4 is pinned in `.go-version`. HTTP timeout, TLS and shutdown mechanisms follow the
 [Go HTTP contract](https://pkg.go.dev/net/http). The optional telemetry integration
 uses the pinned OpenTelemetry dependencies described in [TELEMETRY.md](TELEMETRY.md).
 The memory planner bridge and narrow Agents API adapter add no runtime dependency.
