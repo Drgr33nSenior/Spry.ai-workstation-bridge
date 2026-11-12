@@ -200,7 +200,7 @@ accuracy or workload performance claim follows from the UI or source fixtures.
 Bridge uses the official Apache-2.0-licensed
 [OpenTelemetry Go v1.46.0 release](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.46.0),
 source commit `58db4c898f5b5594f8ba78f156475bf48486e2f2`. The SDK requires Go 1.25
-or newer and this repository pins Go 1.27.1. `go.mod` and `go.sum` pin the SDK,
+or newer and this repository pins Go 1.27.4. `go.mod` and `go.sum` pin the SDK,
 OTLP HTTP exporters and their protocol dependencies. The official SDK supplies
 bounded batching and OTLP encoding without adding another runtime or CGO.
 

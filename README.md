@@ -39,7 +39,7 @@ explicitly unavailable through the current execution/client boundaries.
 
 ## Run the demo
 
-Use Go **1.27.1**, as recorded in `.go-version`. No production Node.js runtime,
+Use Go **1.27.4**, as recorded in `.go-version`. No production Node.js runtime,
 SQLite driver or CGO is required. The module identity is declared by
 [`go.mod`](go.mod): `github.com/Drgr33nSenior/Spry.ai-workstation-bridge`.
 
